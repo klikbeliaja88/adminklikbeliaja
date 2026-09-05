@@ -72,6 +72,20 @@
   .sidebar-foot .who{font-size:12.5px; margin-bottom:10px;}
   .sidebar-foot .who b{color:#fff;}
 
+  /* Overlay gelap di belakang sidebar drawer (mobile/tablet) */
+  .sidebar-overlay{position:fixed; inset:0; background:rgba(8,18,12,0.55); z-index:190; display:none;}
+  .sidebar-overlay.active{display:block;}
+
+  /* Top bar khusus mobile/tablet -- berisi tombol hamburger untuk buka sidebar */
+  .mobile-topbar{
+    display:none; align-items:center; justify-content:space-between; gap:10px;
+    background:var(--green-dark); color:#fff; padding:14px 18px;
+    position:sticky; top:0; z-index:150; box-shadow:0 2px 10px rgba(0,0,0,0.12);
+  }
+  .mobile-topbar .hamburger{background:rgba(255,255,255,0.12); border:none; color:#fff; font-size:19px; padding:7px 11px; border-radius:9px; line-height:1;}
+  .mobile-topbar .title{font-weight:800; font-size:14.5px; flex:1; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
+  .mobile-topbar .logout-mini{background:rgba(255,255,255,0.15); border:none; color:#fff; font-size:12px; padding:7px 11px; border-radius:8px; font-weight:700; flex-shrink:0;}
+
   main{padding:26px 32px 60px; overflow-x:hidden;}
   .page-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
   .page-head h2{font-size:22px;}
@@ -140,17 +154,43 @@
   .order-items{border-top:1px solid var(--line); margin-top:14px; padding-top:12px;}
   .order-item-line{display:flex; justify-content:space-between; font-size:13px; padding:5px 0;}
 
-  @media(max-width:900px){
-    #app.active{grid-template-columns:1fr; grid-template-rows:auto 1fr;}
-    aside.sidebar{flex-direction:row; overflow-x:auto; padding:12px;}
-    .sidebar-logo{display:none;}
-    .sidebar-foot{display:none;}
-    .nav-item{border-left:none; border-bottom:3px solid transparent; white-space:nowrap;}
-    .nav-item.active{border-bottom-color:var(--amber);}
+  @media(max-width:1100px){
+    /* Di lebar ini sidebar tetap ada tapi jadi drawer off-canvas (bukan
+       kolom tetap) supaya konten utama dapat ruang penuh -- dipakai untuk
+       tablet & HP sekaligus, dibuka/tutup lewat tombol hamburger. */
+    #app.active{grid-template-columns:1fr;}
+    .mobile-topbar{display:flex;}
+    aside.sidebar{
+      position:fixed; top:0; left:0; bottom:0; width:270px; max-width:84vw;
+      z-index:200; transform:translateX(-100%); transition:transform .25s ease;
+      flex-direction:column; overflow-y:auto; box-shadow:6px 0 26px rgba(0,0,0,0.22);
+    }
+    aside.sidebar.open{transform:translateX(0);}
+    .sidebar-logo, .sidebar-foot{display:block;}
+    .nav-item{border-left:3px solid transparent; border-bottom:none; white-space:normal;}
+
     main{padding:18px;}
     .stat-grid{grid-template-columns:1fr 1fr;}
-    table{font-size:12.5px;}
     .field-row{grid-template-columns:1fr;}
+
+    /* Tabel jangan sampai merusak layout di layar sempit -- kasih scroll
+       horizontal sendiri di dalam panel-nya, bukan men-squeeze kolom. */
+    .panel:has(> table){overflow-x:auto; -webkit-overflow-scrolling:touch;}
+    table{min-width:620px; font-size:12.5px;}
+
+    /* Kasir (POS): grid produk & keranjang ditumpuk, keranjang tidak lagi
+       "menempel" (sticky) supaya tidak menutupi grid produk di layar sempit. */
+    #pos-layout{display:block !important;}
+    #pos-layout .panel{position:static !important; margin-top:16px;}
+    #pos-product-grid{max-height:none !important;}
+  }
+
+  @media(max-width:600px){
+    .stat-grid{grid-template-columns:1fr;}
+    .page-head h2{font-size:19px;}
+    .modal-box{max-width:100%; border-radius:16px;}
+    .modal-head, .modal-body, .modal-foot{padding-left:16px; padding-right:16px;}
+    #pos-product-grid{grid-template-columns:repeat(auto-fill,minmax(118px,1fr)) !important;}
   }
 </style>
 </head>
@@ -181,7 +221,13 @@
 
 <!-- ============ APP SHELL ============ -->
 <div id="app">
-  <aside class="sidebar">
+  <div class="sidebar-overlay" id="sidebar-overlay" onclick="closeSidebar()"></div>
+  <div class="mobile-topbar" id="mobile-topbar">
+    <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
+    <span class="title" id="mobile-topbar-title">Dashboard</span>
+    <button class="logout-mini" onclick="doLogout()">Keluar</button>
+  </div>
+  <aside class="sidebar" id="sidebar">
     <div class="sidebar-logo">
       <div class="n">Klik Beli Aja</div>
       <div class="t">Admin Panel</div>
@@ -189,6 +235,7 @@
     <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="ic">📊</span> Dashboard</div>
     <div class="nav-item" data-tab="kasir" onclick="switchTab('kasir')"><span class="ic">🧮</span> Kasir (POS)</div>
     <div class="nav-item" data-tab="produk" onclick="switchTab('produk')"><span class="ic">📦</span> Produk &amp; Promo</div>
+    <div class="nav-item" data-tab="inventaris" onclick="switchTab('inventaris')"><span class="ic">📋</span> Inventaris</div>
     <div class="nav-item" data-tab="kategori" onclick="switchTab('kategori')"><span class="ic">🗂️</span> Kategori</div>
     <div class="nav-item" data-tab="pesanan" onclick="switchTab('pesanan')"><span class="ic">🧾</span> Pesanan</div>
     <div class="nav-item" data-tab="pengantaran" onclick="switchTab('pengantaran')"><span class="ic">🚚</span> Batch Pengantaran</div>
@@ -229,9 +276,9 @@
           <span class="tag green" id="pos-today-summary">Hari ini: 0 transaksi · Rp0</span>
         </div>
       </div>
-      <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:20px; align-items:start;">
+      <div id="pos-layout" style="display:grid; grid-template-columns:1.5fr 1fr; gap:20px; align-items:start;">
         <div>
-          <input type="text" id="pos-search" placeholder="Cari nama produk..." oninput="renderPosProductGrid()" style="width:100%; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px; font-size:14px; margin-bottom:14px;">
+          <input type="text" id="pos-search" placeholder="Cari nama produk, atau scan barcode..." oninput="renderPosProductGrid()" onkeydown="handlePosSearchKeydown(event)" autocomplete="off" style="width:100%; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px; font-size:14px; margin-bottom:14px;">
           <div id="pos-product-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; max-height:70vh; overflow-y:auto; padding-right:4px;"></div>
         </div>
 
@@ -294,6 +341,44 @@
         <table>
           <thead><tr><th>Produk</th><th>Kategori</th><th>Harga</th><th>Diskon</th><th>Stok</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody id="produk-table"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- INVENTARIS -->
+    <section class="tab-panel" id="tab-inventaris" style="display:none;">
+      <div class="page-head">
+        <h2>Inventaris</h2>
+        <div class="toolbar">
+          <input type="text" id="inv-search" placeholder="Cari nama / barcode / SKU..." oninput="renderInventarisTab()">
+          <select id="inv-filter" onchange="renderInventarisTab()">
+            <option value="">Semua Stok</option>
+            <option value="LOW">Stok Menipis</option>
+            <option value="OUT">Stok Habis</option>
+          </select>
+          <button class="btn btn-primary btn-sm" onclick="openRestockModal(null)">+ Restok / Koreksi Stok</button>
+        </div>
+      </div>
+
+      <div class="stat-grid" id="inv-stat-grid">
+        <div class="stat-card"><div class="lbl">Total Produk</div><div class="val" id="inv-stat-total">0</div></div>
+        <div class="stat-card"><div class="lbl">Stok Menipis</div><div class="val" id="inv-stat-low" style="color:var(--amber-dark);">0</div></div>
+        <div class="stat-card"><div class="lbl">Stok Habis</div><div class="val" id="inv-stat-out" style="color:var(--stamp);">0</div></div>
+        <div class="stat-card"><div class="lbl">Total Unit di Gudang</div><div class="val" id="inv-stat-units">0</div></div>
+      </div>
+
+      <div class="panel" style="margin-bottom:20px;">
+        <table>
+          <thead><tr><th>Produk</th><th>Barcode/SKU</th><th>Stok Saat Ini</th><th>Stok Minimum</th><th>Status</th><th>Aksi</th></tr></thead>
+          <tbody id="inventaris-table"></tbody>
+        </table>
+      </div>
+
+      <div class="page-head"><h2 style="font-size:16px;">Riwayat Pergerakan Stok Terbaru</h2></div>
+      <div class="panel">
+        <table>
+          <thead><tr><th>Tanggal</th><th>Produk</th><th>Tipe</th><th>Jumlah</th><th>Referensi</th><th>Catatan</th></tr></thead>
+          <tbody id="inventaris-log-table"></tbody>
         </table>
       </div>
     </section>
@@ -543,6 +628,16 @@
         <div class="field"><label>Harga Beli (Rp)</label><input type="number" id="p-purchase" value="0"></div>
         <div class="field"><label>Stok</label><input type="number" id="p-stock" value="0"></div>
       </div>
+      <div class="field-row">
+        <div class="field">
+          <label>Barcode / SKU (untuk scan)</label>
+          <div style="display:flex; gap:6px;">
+            <input type="text" id="p-barcode" placeholder="Scan atau ketik manual" style="flex:1;">
+          </div>
+        </div>
+        <div class="field"><label>Stok Minimum (peringatan menipis)</label><input type="number" id="p-min-stock" value="5" min="0"></div>
+      </div>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:-8px;">💡 Klik ke kolom Barcode lalu scan pakai alat barcode scanner (USB/Bluetooth) — kode otomatis terisi.</p>
       <div class="field">
         <label>Foto Produk</label>
         <div style="display:flex; gap:14px; align-items:flex-start;">
@@ -572,6 +667,44 @@
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal('modal-produk')">Batal</button>
       <button class="btn btn-primary" onclick="saveProduct()">Simpan</button>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: RESTOK / KOREKSI STOK ============ -->
+<div class="modal-overlay" id="modal-restock">
+  <div class="modal-box">
+    <div class="modal-head"><h3>📋 Restok / Koreksi Stok</h3><button class="modal-close" onclick="closeModal('modal-restock')">✕</button></div>
+    <div class="modal-body">
+      <div class="field">
+        <label>Scan Barcode (opsional)</label>
+        <input type="text" id="restock-scan" placeholder="Klik di sini lalu scan barcode..." autocomplete="off">
+        <p style="font-size:11px; color:var(--ink-soft); margin-top:5px;">Colok alat barcode scanner ke HP/tablet/komputer, klik kolom ini, lalu scan — produk otomatis terpilih di bawah.</p>
+      </div>
+      <div class="field">
+        <label>Produk</label>
+        <select id="restock-product" onchange="onRestockProductChange()"></select>
+      </div>
+      <p id="restock-current-stock" style="font-size:13px; font-weight:700; color:var(--green-dark); margin-top:-8px;"></p>
+      <div class="field-row">
+        <div class="field">
+          <label>Jenis</label>
+          <select id="restock-type" onchange="updateRestockSign()">
+            <option value="in">Restok Masuk (+)</option>
+            <option value="out">Koreksi / Barang Rusak (−)</option>
+          </select>
+        </div>
+        <div class="field"><label>Jumlah</label><input type="number" id="restock-qty" min="1" value="1"></div>
+      </div>
+      <div class="field">
+        <label>Catatan (opsional)</label>
+        <input type="text" id="restock-note" placeholder="Contoh: Kiriman supplier tgl 5 Sept">
+      </div>
+      <p id="restock-preview" style="font-size:12.5px; color:var(--ink-soft);"></p>
+    </div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" onclick="closeModal('modal-restock')">Batal</button>
+      <button class="btn btn-primary" onclick="submitRestock()">Simpan Perubahan Stok</button>
     </div>
   </div>
 </div>
@@ -631,6 +764,19 @@
   <div class="modal-box" style="max-width:360px;">
     <div class="modal-head"><h3>✓ Transaksi Berhasil</h3><button class="modal-close" onclick="closePosReceiptModal()">✕</button></div>
     <div class="modal-body" id="pos-receipt-body" style="font-size:13.5px;"></div>
+    <div style="padding:0 22px 14px;">
+      <label style="display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin-bottom:6px;">Ukuran Kertas Printer Thermal</label>
+      <select id="pos-print-size" onchange="savePrintSizePref()" style="width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:13px;">
+        <option value="57x37">57 × 37 mm</option>
+        <option value="57x50">57 × 50 mm</option>
+        <option value="58x40">58 × 40 mm</option>
+        <option value="58x50">58 × 50 mm</option>
+        <option value="80x40">80 × 40 mm</option>
+        <option value="80x80">80 × 80 mm</option>
+        <option value="80x140">80 × 140 mm</option>
+        <option value="80x160">80 × 160 mm</option>
+      </select>
+    </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="printPosReceipt()">🖨️ Cetak</button>
       <button class="btn btn-primary" onclick="closePosReceiptModal()">Transaksi Baru</button>
@@ -748,6 +894,7 @@ async function loadAdminData(){
     fillShippingSettingsForm();
     if(document.getElementById('tab-laporan').style.display !== 'none') renderLaporanTab();
     if(document.getElementById('tab-pengantaran').style.display !== 'none') renderPengantaranTab();
+    if(document.getElementById('tab-inventaris').style.display !== 'none') renderInventarisTab();
   }catch(err){
     showToast('Gagal memuat data dari server.', true);
   }
@@ -756,14 +903,40 @@ async function loadAdminData(){
 /* ============================================================
    TABS
    ============================================================ */
+const TAB_TITLES = {
+  dashboard:'Dashboard', kasir:'Kasir (POS)', produk:'Produk & Promo', inventaris:'Inventaris',
+  kategori:'Kategori', pesanan:'Pesanan', pengantaran:'Batch Pengantaran', laporan:'Laporan Penjualan',
+  pelanggan:'Pelanggan', pengaturan:'Pengaturan Toko', ongkir:'Ongkir & Pengiriman',
+};
+
 function switchTab(name){
   document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
   document.getElementById('tab-'+name).style.display='block';
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.querySelector(`.nav-item[data-tab="${name}"]`).classList.add('active');
+  const titleEl = document.getElementById('mobile-topbar-title');
+  if(titleEl) titleEl.textContent = TAB_TITLES[name] || 'Admin';
   if(name==='laporan') renderLaporanTab();
-  if(name==='kasir'){ renderPosProductGrid(); loadPosSummary(); }
+  if(name==='kasir'){ renderPosProductGrid(); loadPosSummary(); focusPosScanInput(); }
   if(name==='pengantaran') renderPengantaranTab();
+  if(name==='inventaris') renderInventarisTab();
+  closeSidebar(); // di mobile/tablet, drawer otomatis tertutup setelah pilih menu
+}
+
+/* ============================================================
+   SIDEBAR DRAWER (mobile & tablet)
+   ============================================================ */
+function toggleSidebar(){
+  const isOpen = document.getElementById('sidebar').classList.contains('open');
+  if(isOpen) closeSidebar(); else openSidebar();
+}
+function openSidebar(){
+  document.getElementById('sidebar').classList.add('open');
+  document.getElementById('sidebar-overlay').classList.add('active');
+}
+function closeSidebar(){
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('sidebar-overlay').classList.remove('active');
 }
 
 /* ============================================================
@@ -837,6 +1010,7 @@ function renderProdukTable(){
         <td>${statusTag(p.Status)}</td>
         <td class="row-actions">
           <button class="icon-action" onclick='openProductModal(${JSON.stringify(p).replace(/'/g,"&apos;")})'>Edit</button>
+          <button class="icon-action" onclick="openRestockModal('${p.Product_ID}')">📋 Restok</button>
           ${p.Status!=='INACTIVE'
             ? `<button class="icon-action" onclick="toggleProductStatus('${p.Product_ID}','INACTIVE')">Nonaktifkan</button>`
             : `<button class="icon-action" onclick="toggleProductStatus('${p.Product_ID}','ACTIVE')">Aktifkan</button>
@@ -857,6 +1031,8 @@ function openProductModal(p){
   document.getElementById('p-discount').value = p ? (p.Discount||0) : 0;
   document.getElementById('p-purchase').value = p ? (p.Purchase_Price||0) : 0;
   document.getElementById('p-stock').value = p ? p.Stock : 0;
+  document.getElementById('p-barcode').value = p ? (p.Barcode||'') : '';
+  document.getElementById('p-min-stock').value = p ? (p.Min_Stock !== undefined && p.Min_Stock !== '' ? p.Min_Stock : 5) : 5;
   document.getElementById('p-status').value = p ? p.Status : 'ACTIVE';
   document.getElementById('p-image-file').value = '';
   document.getElementById('p-image-status').textContent = 'Unggah foto asli (otomatis dikecilkan & disimpan ke Google Drive), atau isi emoji sebagai alternatif:';
@@ -990,6 +1166,8 @@ async function saveProduct(){
     Discount: Number(document.getElementById('p-discount').value)||0,
     Purchase_Price: Number(document.getElementById('p-purchase').value)||0,
     Stock: Number(document.getElementById('p-stock').value)||0,
+    Barcode: document.getElementById('p-barcode').value.trim(),
+    Min_Stock: Number(document.getElementById('p-min-stock').value)||0,
     Image_URL: document.getElementById('p-image-value').value.trim() || '🛒',
     Status: document.getElementById('p-status').value,
   };
@@ -1013,6 +1191,188 @@ async function deleteProductPermanent(id, name){
   if(res.success){ showToast('Produk dihapus permanen'); loadAdminData(); }
   else showToast(res.error || 'Gagal menghapus produk', true);
 }
+
+/* ============================================================
+   INVENTARIS -- stok live (auto ikut penjualan online/POS) + restok
+   ============================================================
+   Stok produk (DATA.products[].Stock) sudah otomatis berkurang setiap
+   ada penjualan online (createOrder_) maupun Kasir/POS (posCreateSale_)
+   di backend -- tab ini hanya MENAMPILKANNYA dengan jelas (status
+   menipis/habis) dan menyediakan cara cepat untuk menambah stok
+   (restok barang datang) atau koreksi (barang rusak/hilang), yang
+   keduanya langsung tersimpan ke sheet PRODUCTS + tercatat di riwayat
+   STOCK_MOVEMENT.
+   ============================================================ */
+function stockStatusOf(p){
+  const stock = Number(p.Stock)||0;
+  const minStock = Number(p.Min_Stock)||0;
+  if(stock <= 0) return 'OUT';
+  if(minStock > 0 && stock <= minStock) return 'LOW';
+  return 'OK';
+}
+
+function lookupProductByCode(code){
+  const c = String(code||'').trim().toLowerCase();
+  if(!c) return null;
+  return DATA.products.find(p =>
+    (p.Barcode && String(p.Barcode).trim().toLowerCase() === c) ||
+    (p.SKU && String(p.SKU).trim().toLowerCase() === c) ||
+    (p.Product_ID && String(p.Product_ID).trim().toLowerCase() === c)
+  ) || null;
+}
+
+function renderInventarisTab(){
+  const term = (document.getElementById('inv-search').value||'').toLowerCase();
+  const filter = document.getElementById('inv-filter').value;
+  let list = DATA.products.filter(p=>{
+    const matchTerm = !term || p.Product_Name.toLowerCase().includes(term) ||
+      String(p.Barcode||'').toLowerCase().includes(term) || String(p.SKU||'').toLowerCase().includes(term);
+    const status = stockStatusOf(p);
+    const matchFilter = !filter || (filter==='LOW' && status==='LOW') || (filter==='OUT' && status==='OUT');
+    return matchTerm && matchFilter;
+  });
+
+  const totalProduk = DATA.products.length;
+  const lowCount = DATA.products.filter(p=>stockStatusOf(p)==='LOW').length;
+  const outCount = DATA.products.filter(p=>stockStatusOf(p)==='OUT').length;
+  const totalUnits = DATA.products.reduce((s,p)=>s+(Number(p.Stock)||0), 0);
+  document.getElementById('inv-stat-total').textContent = totalProduk;
+  document.getElementById('inv-stat-low').textContent = lowCount;
+  document.getElementById('inv-stat-out').textContent = outCount;
+  document.getElementById('inv-stat-units').textContent = totalUnits.toLocaleString('id-ID');
+
+  const tbody = document.getElementById('inventaris-table');
+  if(list.length===0){
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Tidak ada produk yang cocok.</td></tr>`;
+  } else {
+    tbody.innerHTML = list.map(p=>{
+      const status = stockStatusOf(p);
+      const statusTagHtml = status==='OUT' ? '<span class="tag red">Stok Habis</span>'
+        : status==='LOW' ? '<span class="tag amber">Stok Menipis</span>'
+        : '<span class="tag green">Aman</span>';
+      return `
+        <tr>
+          <td class="cell-strong">${p.Product_Name}</td>
+          <td class="cell-muted">${p.Barcode || p.SKU || '-'}</td>
+          <td class="cell-strong">${p.Stock}</td>
+          <td class="cell-muted">${p.Min_Stock || 0}</td>
+          <td>${statusTagHtml}</td>
+          <td><button class="icon-action" onclick="openRestockModal('${p.Product_ID}')">📋 Restok</button></td>
+        </tr>
+      `;
+    }).join('');
+  }
+
+  loadStockMovements();
+}
+
+async function loadStockMovements(){
+  const tbody = document.getElementById('inventaris-log-table');
+  if(!CONFIG.API_URL) return;
+  try{
+    const res = await fetch(CONFIG.API_URL + '?action=adminStockMovements&token=' + encodeURIComponent(adminToken));
+    const data = await res.json();
+    if(!data.success){ return; }
+    const rows = data.movements || [];
+    if(rows.length===0){
+      tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Belum ada riwayat pergerakan stok.</td></tr>`;
+      return;
+    }
+    const typeTag = t => t==='IN' ? '<span class="tag green">Masuk</span>' : t==='OUT' ? '<span class="tag red">Keluar</span>' : '<span class="tag amber">Koreksi</span>';
+    tbody.innerHTML = rows.slice(0, 60).map(m=>{
+      const p = DATA.products.find(x=>x.Product_ID===m.Product_ID);
+      const dateStr = m.Date ? new Date(m.Date).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+      return `
+        <tr>
+          <td class="cell-muted">${dateStr}</td>
+          <td>${p ? p.Product_Name : m.Product_ID}</td>
+          <td>${typeTag(m.Type)}</td>
+          <td class="cell-strong">${m.Type==='OUT' ? '-' : '+'}${m.Qty}</td>
+          <td class="cell-muted">${m.Reference||'-'}</td>
+          <td class="cell-muted">${m.Note||'-'}</td>
+        </tr>
+      `;
+    }).join('');
+  }catch(err){ /* diamkan -- riwayat opsional, tidak kritikal */ }
+}
+
+function openRestockModal(productId){
+  const sel = document.getElementById('restock-product');
+  sel.innerHTML = DATA.products
+    .slice()
+    .sort((a,b)=>a.Product_Name.localeCompare(b.Product_Name))
+    .map(p=>`<option value="${p.Product_ID}">${p.Product_Name} (Stok: ${p.Stock})</option>`).join('');
+  if(productId) sel.value = productId;
+  document.getElementById('restock-scan').value = '';
+  document.getElementById('restock-type').value = 'in';
+  document.getElementById('restock-qty').value = 1;
+  document.getElementById('restock-note').value = '';
+  onRestockProductChange();
+  openModal('modal-restock');
+  setTimeout(()=>document.getElementById('restock-scan').focus(), 150);
+}
+
+function onRestockProductChange(){
+  const p = DATA.products.find(x=>x.Product_ID===document.getElementById('restock-product').value);
+  document.getElementById('restock-current-stock').textContent = p ? `Stok saat ini: ${p.Stock} ${p.Unit||''}` : '';
+  updateRestockPreview();
+}
+
+function updateRestockSign(){ updateRestockPreview(); }
+
+function updateRestockPreview(){
+  const p = DATA.products.find(x=>x.Product_ID===document.getElementById('restock-product').value);
+  const qty = Number(document.getElementById('restock-qty').value)||0;
+  const isIn = document.getElementById('restock-type').value === 'in';
+  const preview = document.getElementById('restock-preview');
+  if(!p || qty<=0){ preview.textContent = ''; return; }
+  const after = (Number(p.Stock)||0) + (isIn ? qty : -qty);
+  preview.textContent = after < 0
+    ? `⚠️ Tidak bisa dikurangi ${qty} — stok saat ini hanya ${p.Stock}.`
+    : `Stok akan menjadi: ${after} ${p.Unit||''}`;
+  preview.style.color = after < 0 ? 'var(--stamp)' : 'var(--ink-soft)';
+}
+document.addEventListener('input', (e)=>{
+  if(e.target && (e.target.id==='restock-qty')) updateRestockPreview();
+});
+
+async function submitRestock(){
+  const productId = document.getElementById('restock-product').value;
+  const qty = Number(document.getElementById('restock-qty').value)||0;
+  const isIn = document.getElementById('restock-type').value === 'in';
+  const note = document.getElementById('restock-note').value.trim();
+  if(!productId){ showToast('Pilih produk dulu', true); return; }
+  if(qty<=0){ showToast('Jumlah wajib diisi', true); return; }
+
+  const res = await callApi('adminRestock', { product_id: productId, qty: isIn ? qty : -qty, note });
+  if(res.success){
+    showToast(isIn ? 'Stok berhasil ditambahkan' : 'Koreksi stok berhasil disimpan');
+    closeModal('modal-restock');
+    loadAdminData();
+  } else {
+    showToast(res.error || 'Gagal menyimpan perubahan stok', true);
+  }
+}
+
+// Input scan barcode di modal restock -- scanner USB/Bluetooth "mengetik"
+// kode lalu otomatis menekan Enter, jadi cukup dengar event Enter di sini.
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter') return;
+  if(e.target && e.target.id === 'restock-scan'){
+    e.preventDefault();
+    const code = e.target.value.trim();
+    if(!code) return;
+    const found = lookupProductByCode(code);
+    if(found){
+      document.getElementById('restock-product').value = found.Product_ID;
+      onRestockProductChange();
+      showToast(`Terdeteksi: ${found.Product_Name}`);
+    } else {
+      showToast('Barcode tidak ditemukan di katalog produk', true);
+    }
+    e.target.value = '';
+  }
+});
 
 /* ============================================================
    KATEGORI
@@ -1356,6 +1716,33 @@ async function recalcRatings(){
    ============================================================ */
 let posCart = {}; // {productId: qty}
 
+function focusPosScanInput(){
+  const el = document.getElementById('pos-search');
+  if(el) setTimeout(()=>el.focus(), 150);
+}
+
+// Alat barcode scanner (USB/Bluetooth merk apapun) bekerja sebagai keyboard
+// biasa (HID) -- tidak perlu driver/aplikasi tambahan. Begitu dicolok &
+// dipakai scan, alat akan "mengetik" kode barcode dengan sangat cepat lalu
+// otomatis menekan Enter. Kolom pencarian di kasir sudah auto-focus, jadi
+// kasir tinggal scan barang -- kalau kodenya cocok persis dengan salah satu
+// produk (Barcode/SKU/Product_ID), produk itu langsung masuk ke keranjang.
+function handlePosSearchKeydown(e){
+  if(e.key !== 'Enter') return;
+  const input = e.target;
+  const code = input.value.trim();
+  if(!code) return;
+  const found = lookupProductByCode(code);
+  if(found){
+    e.preventDefault();
+    if(Number(found.Stock) <= 0){ showToast(`${found.Product_Name} — stok habis`, true); }
+    else { addToPosCart(found.Product_ID); showToast(`${found.Product_Name} ditambahkan`); }
+    input.value = '';
+    renderPosProductGrid();
+  }
+  // kalau tidak cocok persis kode apa pun, biarkan saja -- anggap pencarian nama biasa
+}
+
 function renderPosProductGrid(){
   const term = (document.getElementById('pos-search').value||'').toLowerCase();
   const wrap = document.getElementById('pos-product-grid');
@@ -1529,6 +1916,7 @@ function showPosReceipt(res, payload){
       <p style="text-align:center; font-size:11px; color:var(--ink-soft); margin-top:10px;">Terima kasih! 🙏</p>
     </div>
   `;
+  loadPrintSizePref();
   openModal('modal-pos-receipt');
 }
 
@@ -1538,15 +1926,88 @@ function closePosReceiptModal(){
 
 function printPosReceipt(){
   const content = document.getElementById('pos-receipt-print').innerHTML;
-  const win = window.open('', '_blank', 'width=380,height=600');
-  win.document.write(`
-    <html><head><title>Struk</title>
-    <style>body{font-family:'Courier New',monospace; padding:16px; font-size:13px;}</style>
-    </head><body>${content}</body></html>
+  const sizeKey = document.getElementById('pos-print-size').value;
+  printReceiptHtml(content, sizeKey);
+}
+
+/* ============================================================
+   CETAK STRUK THERMAL (multi-ukuran kertas, lintas HP/Tablet/Desktop)
+   ============================================================
+   Memakai jendela cetak bawaan browser (window.print), bukan SDK/plugin
+   printer tertentu -- jadi berfungsi di HP, tablet, maupun desktop tanpa
+   instalasi apa pun, asal printer thermal-nya sudah terhubung/terdaftar
+   di sistem (lewat USB, Bluetooth, atau app print service seperti RawBT
+   di Android). Ukuran kertas diatur lewat CSS @page supaya pas dengan
+   lebar kertas thermal (57/58/80mm) dan panjang label yang dipilih.
+   Dipakai lewat iframe tersembunyi (bukan window.open) supaya tidak
+   diblokir pop-up blocker di browser HP.
+   ============================================================ */
+const PRINTER_PAPER_SIZES = {
+  '57x37': { w:57, h:37, font:8.5 },
+  '57x50': { w:57, h:50, font:8.5 },
+  '58x40': { w:58, h:40, font:8.5 },
+  '58x50': { w:58, h:50, font:8.5 },
+  '80x40': { w:80, h:40, font:10.5 },
+  '80x80': { w:80, h:80, font:10.5 },
+  '80x140':{ w:80, h:140, font:11 },
+  '80x160':{ w:80, h:160, font:11 },
+};
+const PRINT_SIZE_STORAGE_KEY = 'kba_admin_print_paper_size';
+
+function loadPrintSizePref(){
+  try{
+    const saved = localStorage.getItem(PRINT_SIZE_STORAGE_KEY);
+    const sel = document.getElementById('pos-print-size');
+    if(sel && saved && PRINTER_PAPER_SIZES[saved]) sel.value = saved;
+  }catch(e){ /* localStorage tidak tersedia -- pakai default saja */ }
+}
+
+function savePrintSizePref(){
+  try{ localStorage.setItem(PRINT_SIZE_STORAGE_KEY, document.getElementById('pos-print-size').value); }
+  catch(e){ /* diamkan -- preferensi opsional */ }
+}
+
+function printReceiptHtml(contentHtml, sizeKey){
+  const size = PRINTER_PAPER_SIZES[sizeKey] || PRINTER_PAPER_SIZES['80x140'];
+  let iframe = document.getElementById('kba-print-iframe');
+  if(iframe) iframe.remove();
+  iframe = document.createElement('iframe');
+  iframe.id = 'kba-print-iframe';
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden;';
+  document.body.appendChild(iframe);
+
+  const doc = iframe.contentWindow.document;
+  doc.open();
+  doc.write(`
+    <!DOCTYPE html><html><head><meta charset="utf-8"><title>Struk</title>
+    <style>
+      @page{ size:${size.w}mm ${size.h}mm; margin:2mm; }
+      *{box-sizing:border-box;}
+      html,body{ margin:0; padding:0; }
+      body{
+        font-family:'Courier New', monospace; font-size:${size.font}px; line-height:1.35;
+        color:#000; width:100%; padding:0;
+      }
+      img{max-width:100%;}
+      p{margin:0 0 4px;}
+    </style>
+    </head><body>${contentHtml}</body></html>
   `);
-  win.document.close();
-  win.focus();
-  win.print();
+  doc.close();
+
+  setTimeout(()=>{
+    try{
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    }catch(err){
+      showToast('Gagal membuka dialog cetak. Pastikan printer sudah terhubung.', true);
+    }
+  }, 200);
+
+  try{
+    iframe.contentWindow.onafterprint = () => { if(iframe.parentNode) iframe.remove(); };
+  }catch(e){ /* beberapa browser tidak dukung onafterprint di iframe -- tidak masalah, iframe tetap dibersihkan giliran cetak berikutnya */ }
 }
 
 async function loadPosSummary(){
