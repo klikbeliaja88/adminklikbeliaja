@@ -141,6 +141,19 @@
   .modal-close{background:none; border:none; color:#fff; font-size:20px;}
   .modal-body{padding:20px 22px;}
   .modal-foot{padding:16px 22px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:10px;}
+
+  /* ===== STRUK KASIR (preview di modal) -- pakai unit em supaya ikut
+     menyusut/membesar mengikuti font-size dasar, senada dgn versi cetak ===== */
+  .receipt{font-family:'Courier New', monospace; line-height:1.35;}
+  .receipt .r-title{font-weight:800; font-size:1.25em; text-align:center; margin:0 0 2px;}
+  .receipt .r-sub{font-size:0.86em; text-align:center; color:var(--ink-soft); margin:0 0 2px;}
+  .receipt .r-meta{font-size:0.8em; color:var(--ink-soft); margin:0 0 2px;}
+  .receipt .r-divider{border-top:1px dashed var(--line); margin:6px 0;}
+  .receipt .r-item{margin-bottom:5px;}
+  .receipt .r-item-name{font-size:0.92em; font-weight:600;}
+  .receipt .r-item-row{display:flex; justify-content:space-between; font-size:0.88em; color:var(--ink-soft);}
+  .receipt .r-row{display:flex; justify-content:space-between; font-size:0.92em; margin-bottom:3px;}
+  .receipt .r-total{font-weight:800; font-size:1.1em; margin-top:2px;}
   .field-row{display:grid; grid-template-columns:1fr 1fr; gap:12px;}
 
   .toast{
@@ -761,21 +774,36 @@
 
 <!-- ============ MODAL: STRUK KASIR (POS) ============ -->
 <div class="modal-overlay" id="modal-pos-receipt">
-  <div class="modal-box" style="max-width:360px;">
+  <div class="modal-box" style="max-width:380px;">
     <div class="modal-head"><h3>✓ Transaksi Berhasil</h3><button class="modal-close" onclick="closePosReceiptModal()">✕</button></div>
     <div class="modal-body" id="pos-receipt-body" style="font-size:13.5px;"></div>
-    <div style="padding:0 22px 14px;">
-      <label style="display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin-bottom:6px;">Ukuran Kertas Printer Thermal</label>
-      <select id="pos-print-size" onchange="savePrintSizePref()" style="width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:13px;">
-        <option value="57x37">57 × 37 mm</option>
-        <option value="57x50">57 × 50 mm</option>
-        <option value="58x40">58 × 40 mm</option>
-        <option value="58x50">58 × 50 mm</option>
-        <option value="80x40">80 × 40 mm</option>
-        <option value="80x80">80 × 80 mm</option>
-        <option value="80x140">80 × 140 mm</option>
-        <option value="80x160">80 × 160 mm</option>
+    <div style="padding:0 22px 14px; border-top:1px solid var(--line); margin-top:6px; padding-top:14px;">
+      <label style="display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin-bottom:6px;">Ukuran Kertas</label>
+      <select id="pos-print-size" onchange="savePrintSizePref()" style="width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:13px; margin-bottom:12px;">
+        <option value="57x37">57 × 37 mm (32 kolom)</option>
+        <option value="57x50">57 × 50 mm (32 kolom)</option>
+        <option value="58x40">58 × 40 mm (32 kolom)</option>
+        <option value="58x50">58 × 50 mm (32 kolom)</option>
+        <option value="80x40">80 × 40 mm (48 kolom)</option>
+        <option value="80x80">80 × 80 mm (48 kolom)</option>
+        <option value="80x140">80 × 140 mm (48 kolom)</option>
+        <option value="80x160">80 × 160 mm (48 kolom)</option>
       </select>
+
+      <label style="display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin-bottom:6px;">Metode Cetak</label>
+      <select id="pos-print-method" onchange="onPrintMethodChange()" style="width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:13px;">
+        <option value="browser">Dialog Print Browser (PDF / printer sistem)</option>
+        <option value="bluetooth">Langsung ke Printer Bluetooth (tanpa install)</option>
+        <option value="usb">Langsung ke Printer USB (tanpa install)</option>
+      </select>
+
+      <div id="pos-print-connect-box" style="display:none; margin-top:10px; padding:10px 12px; background:var(--paper); border-radius:10px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+          <span id="pos-print-status" style="font-size:12px; color:var(--ink-soft); flex:1;">Belum tersambung ke printer.</span>
+          <button class="btn btn-ghost btn-sm" id="pos-print-connect-btn" onclick="connectSelectedPrinter()">🔗 Sambungkan</button>
+        </div>
+        <p id="pos-print-hint" style="font-size:11px; color:var(--ink-soft); margin:8px 0 0;"></p>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="printPosReceipt()">🖨️ Cetak</button>
@@ -1891,82 +1919,174 @@ async function processPosSale(){
   }
 }
 
+/* ============================================================
+   STRUK KASIR -- satu sumber data (lastReceipt), dipakai untuk 3 jalur
+   cetak sekaligus: preview HTML di modal, cetak lewat dialog print
+   browser, dan cetak mentah ESC/POS langsung ke printer Bluetooth/USB.
+   Dipisah dari HTML/CSS supaya format struk konsisten & tidak melebar
+   di luar ukuran kertas thermal yang dipilih.
+   ============================================================ */
+let lastReceipt = null; // {storeName, address, whatsapp, date, orderId, items, total, change, payment}
+
 function showPosReceipt(res, payload){
-  const itemsHtml = (res.items||[]).map(it=>`
-    <div style="display:flex; justify-content:space-between; padding:4px 0;">
-      <span>${it.Product_Name} × ${it.Qty}</span><span>${rupiah(it.Total)}</span>
+  lastReceipt = {
+    storeName: DATA.settings.Store_Name || 'Klik Beli Aja Mart',
+    address: DATA.settings.Address || '',
+    whatsapp: DATA.settings.WhatsApp || '',
+    date: new Date(),
+    orderId: res.order_id,
+    items: (res.items||[]).map(it=>({ name: it.Product_Name, qty: it.Qty, price: it.Price, total: it.Total })),
+    total: res.total,
+    change: res.change || 0,
+    payment: payload.payment_method,
+  };
+  document.getElementById('pos-receipt-body').innerHTML = renderReceiptPreviewHtml(lastReceipt);
+  loadPrintSizePref();
+  onPrintMethodChange();
+  openModal('modal-pos-receipt');
+}
+
+// Tampilan struk di layar (dalam modal) -- pakai class, BUKAN ukuran
+// font/warna inline, supaya bisa dipakai ulang persis sama saat dicetak
+// lewat dialog print browser (ukurannya tinggal menyesuaikan lewat CSS
+// per ukuran kertas, tidak perlu HTML terpisah).
+function renderReceiptPreviewHtml(r){
+  const itemsHtml = r.items.map(it => `
+    <div class="r-item">
+      <div class="r-item-name">${it.name}</div>
+      <div class="r-item-row"><span>${it.qty} x ${rupiah(it.price)}</span><span>${rupiah(it.total)}</span></div>
     </div>
   `).join('');
-  const changeHtml = res.change > 0 ? `
-    <div style="display:flex; justify-content:space-between; padding-top:8px; border-top:1px dashed var(--line); margin-top:8px; font-weight:700;">
-      <span>Kembalian</span><span>${rupiah(res.change)}</span>
-    </div>` : '';
-
-  document.getElementById('pos-receipt-body').innerHTML = `
-    <div id="pos-receipt-print">
-      <p style="text-align:center; font-weight:800; font-size:15px; margin-bottom:2px;">${DATA.settings.Store_Name || 'Klik Beli Aja Mart'}</p>
-      <p style="text-align:center; font-size:11.5px; color:var(--ink-soft); margin-bottom:12px;">${new Date().toLocaleString('id-ID')}</p>
-      <p style="font-size:12px; color:var(--ink-soft); margin-bottom:8px;">No. Transaksi: <b>${res.order_id}</b></p>
-      <div style="border-top:1px dashed var(--line); border-bottom:1px dashed var(--line); padding:8px 0;">${itemsHtml}</div>
-      <div style="display:flex; justify-content:space-between; padding-top:10px; font-size:16px; font-weight:800;">
-        <span>Total</span><span>${rupiah(res.total)}</span>
-      </div>
+  const changeHtml = r.change > 0 ? `<div class="r-row"><span>Kembalian</span><span>${rupiah(r.change)}</span></div>` : '';
+  return `
+    <div id="pos-receipt-print" class="receipt">
+      <p class="r-title">${r.storeName}</p>
+      ${r.address ? `<p class="r-sub">${r.address}</p>` : ''}
+      ${r.whatsapp ? `<p class="r-sub">WA: ${r.whatsapp}</p>` : ''}
+      <div class="r-divider"></div>
+      <p class="r-meta">${r.date.toLocaleString('id-ID')}</p>
+      <p class="r-meta">No: ${r.orderId}</p>
+      <div class="r-divider"></div>
+      ${itemsHtml}
+      <div class="r-divider"></div>
+      <div class="r-row r-total"><span>TOTAL</span><span>${rupiah(r.total)}</span></div>
       ${changeHtml}
-      <p style="text-align:center; font-size:11.5px; color:var(--ink-soft); margin-top:16px;">Metode: ${payload.payment_method}</p>
-      <p style="text-align:center; font-size:11px; color:var(--ink-soft); margin-top:10px;">Terima kasih! 🙏</p>
+      <div class="r-divider"></div>
+      <p class="r-sub">Metode: ${r.payment}</p>
+      <p class="r-sub">Terima kasih! 🙏</p>
     </div>
   `;
-  loadPrintSizePref();
-  openModal('modal-pos-receipt');
 }
 
 function closePosReceiptModal(){
   closeModal('modal-pos-receipt');
 }
 
-function printPosReceipt(){
-  const content = document.getElementById('pos-receipt-print').innerHTML;
-  const sizeKey = document.getElementById('pos-print-size').value;
-  printReceiptHtml(content, sizeKey);
-}
-
 /* ============================================================
-   CETAK STRUK THERMAL (multi-ukuran kertas, lintas HP/Tablet/Desktop)
+   CETAK STRUK -- 3 metode
    ============================================================
-   Memakai jendela cetak bawaan browser (window.print), bukan SDK/plugin
-   printer tertentu -- jadi berfungsi di HP, tablet, maupun desktop tanpa
-   instalasi apa pun, asal printer thermal-nya sudah terhubung/terdaftar
-   di sistem (lewat USB, Bluetooth, atau app print service seperti RawBT
-   di Android). Ukuran kertas diatur lewat CSS @page supaya pas dengan
-   lebar kertas thermal (57/58/80mm) dan panjang label yang dipilih.
-   Dipakai lewat iframe tersembunyi (bukan window.open) supaya tidak
-   diblokir pop-up blocker di browser HP.
+   1. "browser"   -- dialog print bawaan browser (CSS @page per ukuran
+      kertas). Paling universal tapi di HP/tablet BERGANTUNG pada printer
+      thermal-nya sudah terdaftar sebagai printer sistem (lewat driver
+      bawaan, atau app print-service seperti RawBT di Android).
+   2. "bluetooth" -- kirim perintah ESC/POS mentah langsung ke printer
+      lewat Web Bluetooth (GATT/BLE). TIDAK perlu app tambahan, tapi
+      HANYA jalan untuk printer Bluetooth Low Energy (kebanyakan printer
+      thermal generik sudah BLE, tapi sebagian printer lama masih pakai
+      Bluetooth Classic/SPP yang TIDAK didukung Web Bluetooth -- ini
+      keterbatasan dari browser, bukan dari website ini). Didukung di
+      Chrome/Edge Android & Desktop; TIDAK didukung Safari/iOS sama
+      sekali (keterbatasan Apple/WebKit).
+   3. "usb"       -- sama seperti Bluetooth tapi lewat Web USB (kabel USB
+      langsung, atau USB-OTG di HP/tablet Android). Didukung Chrome/Edge
+      Android & Desktop, tidak didukung iOS.
    ============================================================ */
 const PRINTER_PAPER_SIZES = {
-  '57x37': { w:57, h:37, font:8.5 },
-  '57x50': { w:57, h:50, font:8.5 },
-  '58x40': { w:58, h:40, font:8.5 },
-  '58x50': { w:58, h:50, font:8.5 },
-  '80x40': { w:80, h:40, font:10.5 },
-  '80x80': { w:80, h:80, font:10.5 },
-  '80x140':{ w:80, h:140, font:11 },
-  '80x160':{ w:80, h:160, font:11 },
+  '57x37': { w:57, h:37, font:8.5, chars:32 },
+  '57x50': { w:57, h:50, font:8.5, chars:32 },
+  '58x40': { w:58, h:40, font:8.5, chars:32 },
+  '58x50': { w:58, h:50, font:8.5, chars:32 },
+  '80x40': { w:80, h:40, font:10.5, chars:48 },
+  '80x80': { w:80, h:80, font:10.5, chars:48 },
+  '80x140':{ w:80, h:140, font:11, chars:48 },
+  '80x160':{ w:80, h:160, font:11, chars:48 },
 };
 const PRINT_SIZE_STORAGE_KEY = 'kba_admin_print_paper_size';
+const PRINT_METHOD_STORAGE_KEY = 'kba_admin_print_method';
 
 function loadPrintSizePref(){
   try{
-    const saved = localStorage.getItem(PRINT_SIZE_STORAGE_KEY);
-    const sel = document.getElementById('pos-print-size');
-    if(sel && saved && PRINTER_PAPER_SIZES[saved]) sel.value = saved;
+    const savedSize = localStorage.getItem(PRINT_SIZE_STORAGE_KEY);
+    const sizeSel = document.getElementById('pos-print-size');
+    if(sizeSel && savedSize && PRINTER_PAPER_SIZES[savedSize]) sizeSel.value = savedSize;
+    const savedMethod = localStorage.getItem(PRINT_METHOD_STORAGE_KEY);
+    const methodSel = document.getElementById('pos-print-method');
+    if(methodSel && savedMethod) methodSel.value = savedMethod;
   }catch(e){ /* localStorage tidak tersedia -- pakai default saja */ }
 }
-
 function savePrintSizePref(){
   try{ localStorage.setItem(PRINT_SIZE_STORAGE_KEY, document.getElementById('pos-print-size').value); }
   catch(e){ /* diamkan -- preferensi opsional */ }
 }
+function savePrintMethodPref(){
+  try{ localStorage.setItem(PRINT_METHOD_STORAGE_KEY, document.getElementById('pos-print-method').value); }
+  catch(e){ /* diamkan -- preferensi opsional */ }
+}
 
+function onPrintMethodChange(){
+  savePrintMethodPref();
+  const method = document.getElementById('pos-print-method').value;
+  const box = document.getElementById('pos-print-connect-box');
+  const hint = document.getElementById('pos-print-hint');
+  if(method === 'browser'){
+    box.style.display = 'none';
+    return;
+  }
+  box.style.display = 'block';
+  if(method === 'bluetooth'){
+    hint.textContent = !navigator.bluetooth
+      ? '⚠️ Browser ini tidak mendukung Bluetooth Web. Pakai Chrome di Android/Desktop (tidak didukung di Safari/iOS).'
+      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan", kemungkinan printer memakai Bluetooth Classic — pakai USB atau metode Browser sebagai gantinya.';
+  } else if(method === 'usb'){
+    hint.textContent = !navigator.usb
+      ? '⚠️ Browser ini tidak mendukung USB Web. Pakai Chrome/Edge di Android (perlu kabel USB-OTG) atau Desktop (tidak didukung di Safari/iOS).'
+      : 'Colok printer lewat kabel USB (atau USB-OTG di HP/tablet Android), lalu klik Sambungkan.';
+  }
+  updatePrinterConnectionUI();
+}
+
+function updatePrinterConnectionUI(){
+  const method = document.getElementById('pos-print-method').value;
+  const statusEl = document.getElementById('pos-print-status');
+  if(method === 'bluetooth'){
+    statusEl.textContent = btPrinterCharacteristic ? `✅ Tersambung: ${btPrinterDeviceName || 'Printer Bluetooth'}` : 'Belum tersambung ke printer Bluetooth.';
+  } else if(method === 'usb'){
+    statusEl.textContent = usbPrinterDevice ? `✅ Tersambung: ${usbPrinterDevice.productName || 'Printer USB'}` : 'Belum tersambung ke printer USB.';
+  }
+}
+
+function connectSelectedPrinter(){
+  const method = document.getElementById('pos-print-method').value;
+  if(method === 'bluetooth') connectBluetoothPrinter();
+  else if(method === 'usb') connectUsbPrinter();
+}
+
+function printPosReceipt(){
+  if(!lastReceipt){ showToast('Tidak ada data struk untuk dicetak', true); return; }
+  const sizeKey = document.getElementById('pos-print-size').value;
+  const method = document.getElementById('pos-print-method').value;
+  const paper = PRINTER_PAPER_SIZES[sizeKey] || PRINTER_PAPER_SIZES['80x140'];
+
+  if(method === 'bluetooth' || method === 'usb'){
+    printReceiptRaw(lastReceipt, paper, method);
+    return;
+  }
+  // default: dialog print browser
+  const content = document.getElementById('pos-receipt-print').innerHTML;
+  printReceiptHtml(content, sizeKey);
+}
+
+/* ---------- Metode 1: Dialog print browser (CSS @page) ---------- */
 function printReceiptHtml(contentHtml, sizeKey){
   const size = PRINTER_PAPER_SIZES[sizeKey] || PRINTER_PAPER_SIZES['80x140'];
   let iframe = document.getElementById('kba-print-iframe');
@@ -1982,15 +2102,23 @@ function printReceiptHtml(contentHtml, sizeKey){
   doc.write(`
     <!DOCTYPE html><html><head><meta charset="utf-8"><title>Struk</title>
     <style>
-      @page{ size:${size.w}mm ${size.h}mm; margin:2mm; }
+      @page{ size:${size.w}mm ${size.h}mm; margin:0; }
       *{box-sizing:border-box;}
       html,body{ margin:0; padding:0; }
       body{
-        font-family:'Courier New', monospace; font-size:${size.font}px; line-height:1.35;
-        color:#000; width:100%; padding:0;
+        font-family:'Courier New', monospace; font-size:${size.font}px; line-height:1.32;
+        color:#000; width:100%; padding:2mm 2.5mm;
       }
-      img{max-width:100%;}
-      p{margin:0 0 4px;}
+      p{margin:0;}
+      .r-title{font-weight:800; font-size:1.25em; text-align:center; margin-bottom:1mm;}
+      .r-sub{font-size:0.86em; text-align:center; margin-bottom:0.6mm;}
+      .r-meta{font-size:0.8em; margin-bottom:0.6mm;}
+      .r-divider{border-top:1px dashed #000; margin:1.2mm 0;}
+      .r-item{margin-bottom:1mm;}
+      .r-item-name{font-size:0.92em; word-break:break-word;}
+      .r-item-row{display:flex; justify-content:space-between; font-size:0.9em;}
+      .r-row{display:flex; justify-content:space-between; font-size:0.92em; margin-bottom:0.6mm;}
+      .r-total{font-weight:800; font-size:1.08em; margin-top:0.6mm;}
     </style>
     </head><body>${contentHtml}</body></html>
   `);
@@ -2008,6 +2136,186 @@ function printReceiptHtml(contentHtml, sizeKey){
   try{
     iframe.contentWindow.onafterprint = () => { if(iframe.parentNode) iframe.remove(); };
   }catch(e){ /* beberapa browser tidak dukung onafterprint di iframe -- tidak masalah, iframe tetap dibersihkan giliran cetak berikutnya */ }
+}
+
+/* ---------- Metode 2 & 3: ESC/POS mentah lewat Bluetooth / USB ----------
+   Format berbasis KARAKTER (bukan piksel) sesuai lebar kertas (32 kolom
+   untuk 57/58mm, 48 kolom untuk 80mm) -- inilah yang membuat hasil cetak
+   selalu pas & rapi di printer thermal, karena printer mencetak teks ini
+   langsung tanpa perlu "menerka" skala halaman seperti dialog print
+   browser. Tinggi kertas (37/40/50/dst mm) tidak berpengaruh ke sini
+   karena printer thermal mencetak dari gulungan kertas menerus (baris
+   demi baris), bukan halaman berukuran tetap.
+*/
+function padRight(str, len){ str = String(str); return str.length >= len ? str.slice(0, len) : str + ' '.repeat(len - str.length); }
+function padLeft(str, len){ str = String(str); return str.length >= len ? str.slice(-len) : ' '.repeat(len - str.length) + str; }
+function centerText(str, width){
+  str = String(str);
+  if(str.length >= width) return str.slice(0, width);
+  const totalPad = width - str.length, left = Math.floor(totalPad/2);
+  return ' '.repeat(left) + str + ' '.repeat(totalPad-left);
+}
+function twoColRow(left, right, width){
+  left = String(left); right = String(right);
+  const space = width - left.length - right.length;
+  if(space < 1) return left + '\n' + padLeft(right, width); // nama kepanjangan -> pecah ke baris baru
+  return left + ' '.repeat(space) + right;
+}
+
+// Susun struk jadi baris-baris teks polos (dipakai untuk ESC/POS) --
+// tidak ada emoji/karakter aneh supaya tidak bikin printer bingung/garbled.
+function buildReceiptTextLines(r, width){
+  const lines = [];
+  lines.push({ text: r.storeName, align:'center', bold:true });
+  if(r.address) lines.push({ text: r.address, align:'center' });
+  if(r.whatsapp) lines.push({ text: 'WA: '+r.whatsapp, align:'center' });
+  lines.push({ text: '-'.repeat(width) });
+  lines.push({ text: r.date.toLocaleString('id-ID') });
+  lines.push({ text: 'No: '+r.orderId });
+  lines.push({ text: '-'.repeat(width) });
+  r.items.forEach(it=>{
+    lines.push({ text: it.name });
+    lines.push({ text: twoColRow(`${it.qty} x ${rupiah(it.price)}`, rupiah(it.total), width) });
+  });
+  lines.push({ text: '-'.repeat(width) });
+  lines.push({ text: twoColRow('TOTAL', rupiah(r.total), width), bold:true });
+  if(r.change > 0) lines.push({ text: twoColRow('Kembalian', rupiah(r.change), width) });
+  lines.push({ text: '-'.repeat(width) });
+  lines.push({ text: 'Metode: '+r.payment, align:'center' });
+  lines.push({ text: 'Terima kasih!', align:'center' });
+  lines.push({ text: '' });
+  lines.push({ text: '' });
+  return lines;
+}
+
+function textToEscPosBytes(lines){
+  const ESC = 0x1B, GS = 0x1D;
+  const bytes = [];
+  const push = arr => arr.forEach(b=>bytes.push(b));
+  push([ESC,0x40]); // reset/inisialisasi printer
+  lines.forEach(line=>{
+    push(line.align==='center' ? [ESC,0x61,1] : line.align==='right' ? [ESC,0x61,2] : [ESC,0x61,0]);
+    if(line.bold) push([ESC,0x45,1]);
+    String(line.text).split('\n').forEach(t=>{
+      push(Array.from(new TextEncoder().encode(t)));
+      push([0x0A]);
+    });
+    if(line.bold) push([ESC,0x45,0]);
+  });
+  push([0x0A,0x0A,0x0A]); // feed sebelum potong
+  push([GS,0x56,0x00]);   // potong kertas penuh (kalau printer punya auto-cutter; kalau tidak, perintah ini diabaikan)
+  return new Uint8Array(bytes);
+}
+
+async function printReceiptRaw(r, paper, method){
+  const lines = buildReceiptTextLines(r, paper.chars);
+  const bytes = textToEscPosBytes(lines);
+  try{
+    if(method === 'bluetooth') await sendToBluetoothPrinter(bytes);
+    else await sendToUsbPrinter(bytes);
+    showToast('Struk terkirim ke printer 🖨️');
+  }catch(err){
+    showToast('Gagal mencetak: ' + (err.message || err), true);
+  }
+}
+
+/* ---- Web Bluetooth (BLE) ---- */
+let btPrinterDevice = null, btPrinterCharacteristic = null, btPrinterDeviceName = null;
+const BT_PRINTER_SERVICE_UUIDS = [
+  '000018f0-0000-1000-8000-00805f9b34fb', // dipakai banyak printer thermal BLE generik (58/80mm made-in-China)
+  '0000ff00-0000-1000-8000-00805f9b34fb',
+  '49535343-fe7d-4ae5-8fa9-9fafd205e455', // modul BLE berbasis ISSC/CC254x (umum di printer murah)
+  '0000ffe0-0000-1000-8000-00805f9b34fb', // modul HM-10/serial-over-BLE
+];
+
+async function connectBluetoothPrinter(){
+  if(!navigator.bluetooth){
+    showToast('Browser ini tidak mendukung Bluetooth Web (pakai Chrome Android/Desktop)', true);
+    return;
+  }
+  try{
+    const device = await navigator.bluetooth.requestDevice({
+      acceptAllDevices: true,
+      optionalServices: BT_PRINTER_SERVICE_UUIDS,
+    });
+    const server = await device.gatt.connect();
+    let writeChar = null;
+
+    for(const uuid of BT_PRINTER_SERVICE_UUIDS){
+      try{
+        const service = await server.getPrimaryService(uuid);
+        const chars = await service.getCharacteristics();
+        writeChar = chars.find(c=>c.properties.write || c.properties.writeWithoutResponse) || null;
+        if(writeChar) break;
+      }catch(e){ /* servis ini tidak ada di printer -- lanjut coba UUID berikutnya */ }
+    }
+    if(!writeChar){
+      // fallback: telusuri semua servis yang ada di printer (untuk printer dgn UUID custom di luar daftar umum)
+      try{
+        const services = await server.getPrimaryServices();
+        for(const service of services){
+          const chars = await service.getCharacteristics();
+          writeChar = chars.find(c=>c.properties.write || c.properties.writeWithoutResponse);
+          if(writeChar) break;
+        }
+      }catch(e){ /* sebagian printer membatasi akses getPrimaryServices() tanpa UUID spesifik */ }
+    }
+    if(!writeChar) throw new Error('Tidak menemukan fitur tulis di printer ini (mungkin Bluetooth Classic/SPP, bukan BLE)');
+
+    btPrinterDevice = device;
+    btPrinterCharacteristic = writeChar;
+    btPrinterDeviceName = device.name || 'Printer Bluetooth';
+    device.addEventListener('gattserverdisconnected', ()=>{
+      btPrinterCharacteristic = null;
+      updatePrinterConnectionUI();
+    });
+    showToast(`Terhubung ke ${btPrinterDeviceName}`);
+    updatePrinterConnectionUI();
+  }catch(err){
+    if(err.name !== 'NotFoundError') showToast('Gagal menyambungkan printer: ' + err.message, true);
+  }
+}
+
+async function sendToBluetoothPrinter(bytes){
+  if(!btPrinterCharacteristic) throw new Error('Printer Bluetooth belum tersambung');
+  const CHUNK = 180; // banyak printer BLE punya batas ukuran paket (MTU) kecil
+  for(let i=0; i<bytes.length; i+=CHUNK){
+    const chunk = bytes.slice(i, i+CHUNK);
+    if(btPrinterCharacteristic.properties.writeWithoutResponse) await btPrinterCharacteristic.writeValueWithoutResponse(chunk);
+    else await btPrinterCharacteristic.writeValue(chunk);
+  }
+}
+
+/* ---- Web USB ---- */
+let usbPrinterDevice = null, usbPrinterEndpoint = null;
+
+async function connectUsbPrinter(){
+  if(!navigator.usb){
+    showToast('Browser ini tidak mendukung USB Web (pakai Chrome/Edge)', true);
+    return;
+  }
+  try{
+    const device = await navigator.usb.requestDevice({ filters: [] });
+    await device.open();
+    if(device.configuration === null) await device.selectConfiguration(1);
+    const iface = device.configuration.interfaces.find(i => i.alternates.some(a => a.endpoints.some(e => e.direction==='out')));
+    if(!iface) throw new Error('Tidak menemukan jalur output di perangkat ini');
+    await device.claimInterface(iface.interfaceNumber);
+    const alt = iface.alternates.find(a => a.endpoints.some(e => e.direction==='out'));
+    const endpoint = alt.endpoints.find(e => e.direction==='out');
+
+    usbPrinterDevice = device;
+    usbPrinterEndpoint = endpoint.endpointNumber;
+    showToast(`Terhubung ke ${device.productName || 'printer USB'}`);
+    updatePrinterConnectionUI();
+  }catch(err){
+    if(err.name !== 'NotFoundError') showToast('Gagal menyambungkan printer USB: ' + err.message, true);
+  }
+}
+
+async function sendToUsbPrinter(bytes){
+  if(!usbPrinterDevice) throw new Error('Printer USB belum tersambung');
+  await usbPrinterDevice.transferOut(usbPrinterEndpoint, bytes);
 }
 
 async function loadPosSummary(){
