@@ -2165,7 +2165,17 @@ function printReceiptHtml(contentHtml, sizeKey){
   iframe = document.createElement('iframe');
   iframe.id = 'kba-print-iframe';
   iframe.setAttribute('aria-hidden', 'true');
-  iframe.style.cssText = 'position:fixed; right:0; bottom:0; width:0; height:0; border:0; visibility:hidden;';
+  // PENTING: iframe WAJIB diberi lebar sesuai lebar kertas thermal
+  // (bukan width:0). Lebar area render iframe itulah yang jadi acuan
+  // browser saat membungkus teks (word-wrap) di dalamnya. Kalau
+  // width:0, semua teks di dalam struk (termasuk nama barang yang pakai
+  // word-break:break-word) kepaksa patah per-karakter -> jumlah baris
+  // meledak jauh melebihi tampilan struk sebenarnya -> tinggi yang
+  // terukur ikut membengkak -> hasil cetak/preview jadi kepanjangan dan
+  // tidak sama dengan tampilan di aplikasi. Iframe tetap disembunyikan
+  // lewat posisi di luar layar + visibility:hidden, BUKAN lewat ukuran nol.
+  const previewWidthPx = Math.round(size.w * (96 / 25.4));
+  iframe.style.cssText = `position:fixed; left:-9999px; top:0; width:${previewWidthPx}px; height:0; border:0; visibility:hidden;`;
   document.body.appendChild(iframe);
 
   const doc = iframe.contentWindow.document;
