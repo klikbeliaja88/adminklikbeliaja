@@ -795,14 +795,17 @@
         <option value="browser">Dialog Print Browser (PDF / printer sistem)</option>
         <option value="bluetooth">Langsung ke Printer Bluetooth (tanpa install)</option>
         <option value="usb">Langsung ke Printer USB (tanpa install)</option>
+        <option value="rawbt">Kirim ke Aplikasi RawBT (Android, utk Bluetooth Classic/SPP)</option>
       </select>
+      <p style="font-size:11px; color:var(--ink-soft); margin:6px 0 0;">💡 Tips: kalau printer tidak mendukung Bluetooth Low Energy (BLE) -- umum di printer 58mm Bluetooth Classic/SPP -- pakai <b>Kirim ke Aplikasi RawBT</b> (Android) atau <b>Dialog Print Browser</b>. Kalau portnya "dikunci" driver bawaan sistem saat dicolok USB, pakai <b>Dialog Print Browser</b> juga -- asal printer sudah terpasang/terdaftar sebagai printer di HP/komputer, metode ini paling kompatibel untuk hampir semua jenis printer thermal.</p>
 
       <div id="pos-print-connect-box" style="display:none; margin-top:10px; padding:10px 12px; background:var(--paper); border-radius:10px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div id="pos-print-connect-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <span id="pos-print-status" style="font-size:12px; color:var(--ink-soft); flex:1;">Belum tersambung ke printer.</span>
           <button class="btn btn-ghost btn-sm" id="pos-print-connect-btn" onclick="connectSelectedPrinter()">🔗 Sambungkan</button>
         </div>
         <p id="pos-print-hint" style="font-size:11px; color:var(--ink-soft); margin:8px 0 0;"></p>
+        <button class="btn btn-ghost btn-sm" id="pos-print-fallback-btn" style="display:none; margin-top:8px; width:100%;">🔁 Coba metode lain</button>
       </div>
     </div>
     <div class="modal-foot">
@@ -1983,7 +1986,7 @@ function closePosReceiptModal(){
 }
 
 /* ============================================================
-   CETAK STRUK -- 3 metode
+   CETAK STRUK -- 4 metode
    ============================================================
    1. "browser"   -- dialog print bawaan browser (CSS @page per ukuran
       kertas). Paling universal tapi di HP/tablet BERGANTUNG pada printer
@@ -1992,14 +1995,24 @@ function closePosReceiptModal(){
    2. "bluetooth" -- kirim perintah ESC/POS mentah langsung ke printer
       lewat Web Bluetooth (GATT/BLE). TIDAK perlu app tambahan, tapi
       HANYA jalan untuk printer Bluetooth Low Energy (kebanyakan printer
-      thermal generik sudah BLE, tapi sebagian printer lama masih pakai
-      Bluetooth Classic/SPP yang TIDAK didukung Web Bluetooth -- ini
-      keterbatasan dari browser, bukan dari website ini). Didukung di
-      Chrome/Edge Android & Desktop; TIDAK didukung Safari/iOS sama
-      sekali (keterbatasan Apple/WebKit).
+      thermal generik sudah BLE, tapi sebagian printer -- termasuk banyak
+      printer 58mm murah -- masih pakai Bluetooth Classic/SPP yang TIDAK
+      didukung Web Bluetooth -- ini keterbatasan dari browser, bukan dari
+      website ini). Didukung di Chrome/Edge Android & Desktop; TIDAK
+      didukung Safari/iOS sama sekali (keterbatasan Apple/WebKit).
    3. "usb"       -- sama seperti Bluetooth tapi lewat Web USB (kabel USB
       langsung, atau USB-OTG di HP/tablet Android). Didukung Chrome/Edge
       Android & Desktop, tidak didukung iOS.
+   4. "rawbt"     -- khusus Android: kirim byte ESC/POS mentah (sama
+      persis dengan yang dipakai metode "bluetooth"/"usb" di atas) ke
+      aplikasi RawBT lewat Android Intent, lalu RawBT sendiri yang
+      menangani koneksi ke printer (Bluetooth Classic/SPP, BLE, USB,
+      maupun WiFi -- apa pun yang sudah dipasang di dalam RawBT). Ini
+      jalan keluar paling andal untuk printer Bluetooth Classic/SPP yang
+      TIDAK bisa disambungkan langsung lewat Web Bluetooth (poin #2 di
+      atas) -- pengguna cukup pasang & atur printer SEKALI di aplikasi
+      RawBT, sisanya otomatis tiap kali cetak dari sini. Perlu aplikasi
+      RawBT terpasang di HP Android; tidak berlaku untuk iOS/Desktop.
    ============================================================ */
 const PRINTER_PAPER_SIZES = {
   '57x37': { w:57, h:37, font:8.5, chars:32 },
@@ -2037,22 +2050,66 @@ function onPrintMethodChange(){
   savePrintMethodPref();
   const method = document.getElementById('pos-print-method').value;
   const box = document.getElementById('pos-print-connect-box');
+  const connectRow = document.getElementById('pos-print-connect-row');
   const hint = document.getElementById('pos-print-hint');
+  const fallbackBtn = document.getElementById('pos-print-fallback-btn');
+  if(fallbackBtn) fallbackBtn.style.display = 'none'; // reset tiap ganti metode
   if(method === 'browser'){
     box.style.display = 'none';
     return;
   }
   box.style.display = 'block';
+  if(method === 'rawbt'){
+    // RawBT tidak butuh proses "sambung" dari sisi web -- printernya
+    // dipasang & dipilih SEKALI langsung di dalam aplikasi RawBT,
+    // jadi baris status/tombol "Sambungkan" disembunyikan di sini.
+    if(connectRow) connectRow.style.display = 'none';
+    hint.textContent = 'Pastikan aplikasi RawBT sudah terpasang di HP Android & printernya sudah dipilih/diatur sebagai printer default di dalam aplikasi RawBT (buka RawBT > pilih printer > jadikan default) -- ini cara paling andal untuk printer Bluetooth Classic/SPP yang tidak terdeteksi metode "Langsung ke Printer Bluetooth". Tidak berlaku di iOS/Desktop.';
+    return;
+  }
+  if(connectRow) connectRow.style.display = 'flex';
   if(method === 'bluetooth'){
     hint.textContent = !navigator.bluetooth
       ? '⚠️ Browser ini tidak mendukung Bluetooth Web. Pakai Chrome di Android/Desktop (tidak didukung di Safari/iOS).'
-      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan": aktifkan Lokasi HP + izinkan Chrome akses Lokasi/perangkat sekitar, pastikan printer menyala & belum tersambung ke aplikasi lain, atau printer mungkin masih Bluetooth Classic — pakai USB/metode Browser sebagai gantinya.';
+      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan": aktifkan Lokasi HP + izinkan Chrome akses Lokasi/perangkat sekitar, pastikan printer menyala & belum tersambung ke aplikasi lain, atau printer mungkin masih Bluetooth Classic — pakai metode "Kirim ke Aplikasi RawBT" atau Browser sebagai gantinya.';
   } else if(method === 'usb'){
     hint.textContent = !navigator.usb
       ? '⚠️ Browser ini tidak mendukung USB Web. Pakai Chrome/Edge di Android (perlu kabel USB-OTG) atau Desktop (tidak didukung di Safari/iOS).'
       : 'Colok printer lewat kabel USB (pakai kabel data, bukan kabel isi-daya saja), atau USB-OTG di HP/tablet Android, lalu klik Sambungkan. Kalau printer tidak muncul di daftar padahal sudah pernah tersambung, kemungkinan portnya sedang dipakai driver printer sistem -- coba lepas-pasang kabel atau tutup aplikasi print lain dulu.';
   }
   updatePrinterConnectionUI();
+}
+
+// Beralih cepat ke metode cetak lain -- dipakai sebagai jalan keluar
+// kalau metode Bluetooth/USB langsung tidak bisa dipakai karena
+// keterbatasan printer (Bluetooth Classic, bukan BLE) atau karena port
+// USB-nya sudah "dikunci" driver sistem.
+function switchPrintMethodTo(method, label){
+  const sel = document.getElementById('pos-print-method');
+  if(!sel) return;
+  sel.value = method;
+  savePrintMethodPref();
+  onPrintMethodChange();
+  showToast('Metode cetak diganti ke ' + label + '.');
+}
+
+// Tampilkan pesan bantuan secara PERMANEN di dalam kotak sambung
+// (bukan cuma lewat toast yang hilang dalam beberapa detik), supaya
+// penggunanya masih bisa baca penjelasannya sambil mencoba solusinya.
+function setPrintHintPersistent(text){
+  const hint = document.getElementById('pos-print-hint');
+  if(hint) hint.textContent = text;
+}
+// Tombolnya dibuat dinamis (metode & labelnya beda-beda tergantung
+// jenis error) supaya sarannya relevan: printer Bluetooth Classic
+// diarahkan ke RawBT, sedangkan port USB yang dikunci driver sistem
+// diarahkan ke Dialog Print Browser (justru memanfaatkan driver itu).
+function showPrintFallbackButton(method, label){
+  const btn = document.getElementById('pos-print-fallback-btn');
+  if(!btn) return;
+  btn.textContent = '🔁 ' + label;
+  btn.onclick = () => switchPrintMethodTo(method, label);
+  btn.style.display = 'block';
 }
 
 function updatePrinterConnectionUI(){
@@ -2079,6 +2136,10 @@ function printPosReceipt(){
 
   if(method === 'bluetooth' || method === 'usb'){
     printReceiptRaw(lastReceipt, paper, method);
+    return;
+  }
+  if(method === 'rawbt'){
+    printReceiptViaRawBT(lastReceipt, paper);
     return;
   }
   // default: dialog print browser
@@ -2240,6 +2301,45 @@ async function printReceiptRaw(r, paper, method){
   }
 }
 
+/* ---------- Metode 4: Aplikasi RawBT (Android) ----------
+   RawBT (https://rawbt.ru) adalah aplikasi Android yang jadi "jembatan"
+   antara halaman web dan printer thermal -- ia sendiri yang mengurus
+   koneksi ke printernya (Bluetooth Classic/SPP, BLE, USB, atau WiFi),
+   jadi cocok untuk printer Bluetooth Classic/SPP yang TIDAK bisa
+   disambungkan langsung lewat Web Bluetooth (lihat catatan metode
+   "bluetooth" di atas). Pengguna cukup pasang printernya SEKALI di
+   dalam aplikasi RawBT (pilih sbg printer default), sisanya otomatis.
+
+   Cara kerja: kita pakai byte ESC/POS yang SAMA PERSIS dengan yang
+   dipakai metode Bluetooth/USB mentah di atas (jadi hasil cetaknya
+   konsisten & tidak ikut disusutkan seperti metode dialog print
+   browser), lalu kirim lewat Android Intent bawaan yang didukung
+   langsung oleh Chrome tanpa perlu JS SDK tambahan:
+     intent:base64,<data base64>#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;
+   Kalau RawBT belum terpasang, Android/Chrome otomatis mengarahkan ke
+   halaman Play Store aplikasi tsb. */
+function bytesToBase64(bytes){
+  let binary = '';
+  const CHUNK = 0x8000; // hindari batas argumen fungsi utk larik besar
+  for(let i=0; i<bytes.length; i+=CHUNK){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+CHUNK));
+  }
+  return btoa(binary);
+}
+
+function printReceiptViaRawBT(r, paper){
+  try{
+    const lines = buildReceiptTextLines(r, paper.chars);
+    const bytes = textToEscPosBytes(lines);
+    const base64Data = bytesToBase64(bytes);
+    const intentUrl = 'intent:base64,' + base64Data + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
+    window.location.href = intentUrl;
+    showToast('Membuka aplikasi RawBT untuk mencetak…');
+  }catch(err){
+    showToast('Gagal membuka RawBT: ' + (err.message || err), true);
+  }
+}
+
 /* ---- Web Bluetooth (BLE) ---- */
 let btPrinterDevice = null, btPrinterCharacteristic = null, btPrinterDeviceName = null;
 const BT_PRINTER_SERVICE_UUIDS = [
@@ -2330,8 +2430,15 @@ async function connectBluetoothPrinter(){
       // Chooser tertutup tanpa memilih apa pun -- ini juga yang terjadi
       // kalau printernya memang tidak muncul sama sekali di daftar.
       // Beri tahu penyebab paling umum supaya toko tahu harus apa,
-      // bukan cuma diam tanpa penjelasan.
-      showToast('Printer tidak muncul di daftar? Pastikan printer menyala & berdekatan dengan HP, Bluetooth + izin Lokasi untuk browser aktif, dan printer belum tersambung ke aplikasi/HP lain.', true);
+      // bukan cuma diam tanpa penjelasan. Ditulis PERMANEN di kotak
+      // (bukan cuma toast sekilas) + kasih tombol jalan pintas ke
+      // metode Browser, karena banyak printer thermal murah pakai
+      // Bluetooth Classic (SPP) yang MEMANG TIDAK BISA dideteksi Web
+      // Bluetooth sama sekali -- ini keterbatasan browser, bukan bug.
+      const msg = 'Printer tidak muncul di daftar? Pastikan printer menyala & berdekatan dengan HP, Bluetooth + izin Lokasi untuk browser aktif, dan printer belum tersambung ke aplikasi/HP lain. Kalau printer Anda memakai Bluetooth Classic (SPP) -- bukan Bluetooth Low Energy/BLE -- printer TIDAK akan pernah muncul di sini karena keterbatasan bawaan browser. Pakai tombol di bawah untuk beralih ke Aplikasi RawBT (Android).';
+      showToast(msg, true);
+      setPrintHintPersistent(msg);
+      showPrintFallbackButton('rawbt', 'Pakai Aplikasi RawBT');
     } else {
       showToast('Gagal menyambungkan printer: ' + err.message, true);
     }
@@ -2351,6 +2458,19 @@ async function sendToBluetoothPrinter(bytes){
 /* ---- Web USB ---- */
 let usbPrinterDevice = null, usbPrinterEndpoint = null;
 const USB_PRINTER_LAST_KEY = 'kba_admin_usb_printer_last';
+
+// Sama seperti event 'gattserverdisconnected' di Bluetooth -- supaya
+// status tersambung otomatis terupdate kalau kabel USB tercabut fisik,
+// bukan baru ketahuan pas mau cetak (dan gagal tanpa penjelasan jelas).
+if(navigator.usb){
+  navigator.usb.addEventListener('disconnect', (e)=>{
+    if(usbPrinterDevice && e.device === usbPrinterDevice){
+      usbPrinterDevice = null;
+      usbPrinterEndpoint = null;
+      updatePrinterConnectionUI();
+    }
+  });
+}
 
 async function connectUsbPrinter(){
   if(!navigator.usb){
@@ -2391,10 +2511,36 @@ async function connectUsbPrinter(){
 
     await device.open();
     if(device.configuration === null) await device.selectConfiguration(1);
-    const iface = device.configuration.interfaces.find(i => i.alternates.some(a => a.endpoints.some(e => e.direction==='out')));
-    if(!iface) throw new Error('Tidak menemukan jalur output di perangkat ini');
-    await device.claimInterface(iface.interfaceNumber);
-    const alt = iface.alternates.find(a => a.endpoints.some(e => e.direction==='out'));
+
+    // Coba SEMUA interface yang punya jalur output (bukan cuma interface
+    // pertama yang ditemukan). Ini penting karena sebagian printer USB
+    // menyediakan lebih dari satu interface: satu interface "USB Printer
+    // Class" yang begitu dicolok LANGSUNG diklaim otomatis oleh driver
+    // bawaan sistem (Windows "USB Printing Support"/driver printer) --
+    // sehingga browser gagal claimInterface ke situ -- dan satu lagi
+    // interface vendor-specific yang sebenarnya masih bisa diakses
+    // langsung dari browser. Kalau langsung menyerah di percobaan
+    // pertama, printer yang sebenarnya masih bisa dipakai jadi
+    // dianggap gagal total.
+    const candidates = device.configuration.interfaces.filter(
+      i => i.alternates.some(a => a.endpoints.some(e => e.direction==='out'))
+    );
+    if(!candidates.length) throw new Error('Tidak menemukan jalur output di perangkat ini');
+
+    let claimedIface = null, claimErr = null;
+    for(const iface of candidates){
+      try{
+        await device.claimInterface(iface.interfaceNumber);
+        claimedIface = iface;
+        break;
+      }catch(e){ claimErr = e; /* interface ini terkunci driver lain -- coba interface berikutnya */ }
+    }
+    if(!claimedIface){
+      const portLockedErr = new Error('PORT_LOCKED');
+      portLockedErr.original = claimErr;
+      throw portLockedErr;
+    }
+    const alt = claimedIface.alternates.find(a => a.endpoints.some(e => e.direction==='out'));
     const endpoint = alt.endpoints.find(e => e.direction==='out');
 
     usbPrinterDevice = device;
@@ -2410,9 +2556,22 @@ async function connectUsbPrinter(){
     if(err.name === 'NotFoundError'){
       // Chooser tertutup tanpa memilih apa pun -- ini juga yang terjadi
       // kalau printernya memang tidak muncul sama sekali di daftar.
-      showToast('Printer tidak muncul di daftar? Cek: (1) pakai kabel data, bukan kabel isi-daya saja, (2) di HP Android perlu adaptor USB-OTG + izinkan akses USB saat muncul pop-up sistem, (3) kalau driver printer sudah terpasang di komputer, port USB-nya bisa "dikunci" driver itu sehingga tidak kelihatan oleh browser -- coba lepas-pasang ulang kabelnya atau pakai metode Bluetooth/Browser sebagai gantinya.', true);
-    } else if(err.name === 'SecurityError' || /claim/i.test(err.message||'')){
-      showToast('Printer USB terdeteksi tapi portnya sedang dipakai driver/aplikasi lain di sistem. Tutup aplikasi print lain lalu coba lagi, atau pakai metode Bluetooth/Browser.', true);
+      const msg = 'Printer tidak muncul di daftar? Cek: (1) pakai kabel data, bukan kabel isi-daya saja, (2) di HP Android perlu adaptor USB-OTG + izinkan akses USB saat muncul pop-up sistem, (3) kalau driver printer sudah terpasang di komputer, port USB-nya bisa "dikunci" driver itu sehingga tidak kelihatan oleh browser. Kalau printer sudah terdaftar sebagai printer sistem, pakai tombol di bawah untuk beralih ke metode Dialog Print Browser.';
+      showToast(msg, true);
+      setPrintHintPersistent(msg);
+      showPrintFallbackButton('browser', 'Pakai Dialog Print Browser');
+    } else if(err.message === 'PORT_LOCKED' || err.name === 'SecurityError' || /claim/i.test(err.message||'')){
+      // Ini pola error paling umum untuk printer USB thermal murah di
+      // Windows: begitu dicolok, sistem OTOMATIS memasang driver printer
+      // yang mengklaim/mengunci interface-nya secara eksklusif -- akibatnya
+      // browser TIDAK BISA mengambil alih akses langsung ke situ sama
+      // sekali (ini keterbatasan browser/OS, bukan bug aplikasi). Solusi
+      // realistisnya justru MEMANFAATKAN driver yang sudah terpasang itu
+      // lewat metode Dialog Print Browser, bukan memaksa akses mentah.
+      const msg = 'Printer USB terdeteksi tapi portnya sedang dipakai driver/aplikasi printer lain di sistem (ini wajar terjadi begitu Windows/HP otomatis memasang driver saat printer dicolok, dan itu mengunci akses langsung dari browser -- bukan bug aplikasi ini). Solusinya: tutup aplikasi print lain lalu coba lagi, ATAU langsung pakai tombol di bawah untuk beralih ke metode Dialog Print Browser (justru memanfaatkan driver yang sudah terpasang itu).';
+      showToast(msg, true);
+      setPrintHintPersistent(msg);
+      showPrintFallbackButton('browser', 'Pakai Dialog Print Browser');
     } else {
       showToast('Gagal menyambungkan printer USB: ' + err.message, true);
     }
