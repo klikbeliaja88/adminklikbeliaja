@@ -2212,7 +2212,14 @@ function printReceiptHtml(contentHtml, sizeKey){
       // panjang tetap tercetak dalam ukuran normal, tidak diperkecil.
       const PX_PER_MM = 96 / 25.4;
       const contentHeightPx = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
-      const heightMm = Math.max(size.h, Math.ceil(contentHeightPx / PX_PER_MM) + 4);
+      // Dibatasi maksimum 1000mm (1 meter, sudah lebih dari cukup untuk
+      // struk berisi puluhan item) supaya TIDAK PERNAH mendekati batas
+      // maksimum custom-paper-size sebagian driver printer thermal di
+      // Windows (umumnya 3276.7mm / 32767 x 0.1mm). Kalau nilai yang
+      // diminta melewati batas driver, Windows/Chrome bisa diam-diam
+      // membulatkannya ke batas maksimum itu -- hasilnya kertas dianggap
+      // sepanjang beberapa meter, jauh lebih panjang dari struk aslinya.
+      const heightMm = Math.min(1000, Math.max(size.h, Math.ceil(contentHeightPx / PX_PER_MM) + 4));
       const pageStyle = doc.getElementById('kba-page-style');
       if(pageStyle) pageStyle.textContent = pageStyle.textContent.replace(
         `@page{ size:${size.w}mm 2000mm; margin:0; }`,
