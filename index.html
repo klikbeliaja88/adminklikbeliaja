@@ -2046,11 +2046,11 @@ function onPrintMethodChange(){
   if(method === 'bluetooth'){
     hint.textContent = !navigator.bluetooth
       ? '⚠️ Browser ini tidak mendukung Bluetooth Web. Pakai Chrome di Android/Desktop (tidak didukung di Safari/iOS).'
-      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan", kemungkinan printer memakai Bluetooth Classic — pakai USB atau metode Browser sebagai gantinya.';
+      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan": aktifkan Lokasi HP + izinkan Chrome akses Lokasi/perangkat sekitar, pastikan printer menyala & belum tersambung ke aplikasi lain, atau printer mungkin masih Bluetooth Classic — pakai USB/metode Browser sebagai gantinya.';
   } else if(method === 'usb'){
     hint.textContent = !navigator.usb
       ? '⚠️ Browser ini tidak mendukung USB Web. Pakai Chrome/Edge di Android (perlu kabel USB-OTG) atau Desktop (tidak didukung di Safari/iOS).'
-      : 'Colok printer lewat kabel USB (atau USB-OTG di HP/tablet Android), lalu klik Sambungkan.';
+      : 'Colok printer lewat kabel USB (pakai kabel data, bukan kabel isi-daya saja), atau USB-OTG di HP/tablet Android, lalu klik Sambungkan. Kalau printer tidak muncul di daftar padahal sudah pernah tersambung, kemungkinan portnya sedang dipakai driver printer sistem -- coba lepas-pasang kabel atau tutup aplikasi print lain dulu.';
   }
   updatePrinterConnectionUI();
 }
@@ -2086,7 +2086,17 @@ function printPosReceipt(){
   printReceiptHtml(content, sizeKey);
 }
 
-/* ---------- Metode 1: Dialog print browser (CSS @page) ---------- */
+/* ---------- Metode 1: Dialog print browser (CSS @page) ----------
+   PENTING: tinggi kertas TIDAK dipatok ke angka preset (mis. 40mm/80mm)
+   karena kertas thermal itu gulungan menerus -- panjang struk berubah-
+   ubah tergantung jumlah item. Kalau tinggi @page dipatok pendek sementara
+   isi struknya panjang (banyak item), banyak dialog print/driver printer
+   akan otomatis "fit to page" alias MENYUSUTKAN seluruh struk supaya muat
+   di satu halaman pendek itu -- hasilnya tampilan/cetakan jadi kecil
+   sekali walau struknya panjang. Untuk menghindarinya: render dulu isi
+   struk apa adanya, ukur tinggi sebenarnya, baru set tinggi @page persis
+   sesuai hasil ukur itu sebelum dialog cetak dibuka -- jadi tidak pernah
+   ada alasan bagi printer/driver untuk menyusutkan kontennya. */
 function printReceiptHtml(contentHtml, sizeKey){
   const size = PRINTER_PAPER_SIZES[sizeKey] || PRINTER_PAPER_SIZES['80x140'];
   let iframe = document.getElementById('kba-print-iframe');
@@ -2101,8 +2111,8 @@ function printReceiptHtml(contentHtml, sizeKey){
   doc.open();
   doc.write(`
     <!DOCTYPE html><html><head><meta charset="utf-8"><title>Struk</title>
-    <style>
-      @page{ size:${size.w}mm ${size.h}mm; margin:0; }
+    <style id="kba-page-style">
+      @page{ size:${size.w}mm 2000mm; margin:0; }
       *{box-sizing:border-box;}
       html,body{ margin:0; padding:0; }
       body{
@@ -2126,6 +2136,17 @@ function printReceiptHtml(contentHtml, sizeKey){
 
   setTimeout(()=>{
     try{
+      // Ukur tinggi struk yang sudah dirender (px), lalu timpa tinggi
+      // @page dengan tinggi PAS itu (+ sedikit jaga-jaga) supaya struk
+      // panjang tetap tercetak dalam ukuran normal, tidak diperkecil.
+      const PX_PER_MM = 96 / 25.4;
+      const contentHeightPx = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+      const heightMm = Math.max(size.h, Math.ceil(contentHeightPx / PX_PER_MM) + 4);
+      const pageStyle = doc.getElementById('kba-page-style');
+      if(pageStyle) pageStyle.textContent = pageStyle.textContent.replace(
+        `@page{ size:${size.w}mm 2000mm; margin:0; }`,
+        `@page{ size:${size.w}mm ${heightMm}mm; margin:0; }`
+      );
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     }catch(err){
@@ -2228,16 +2249,48 @@ const BT_PRINTER_SERVICE_UUIDS = [
   '0000ffe0-0000-1000-8000-00805f9b34fb', // modul HM-10/serial-over-BLE
 ];
 
+const BT_PRINTER_LAST_ID_KEY = 'kba_admin_bt_printer_last_id';
+
 async function connectBluetoothPrinter(){
   if(!navigator.bluetooth){
     showToast('Browser ini tidak mendukung Bluetooth Web (pakai Chrome Android/Desktop)', true);
     return;
   }
   try{
-    const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: BT_PRINTER_SERVICE_UUIDS,
-    });
+    let device = null;
+
+    // Coba sambung ULANG OTOMATIS ke printer yang PERNAH diizinkan dari
+    // aplikasi ini sebelumnya, tanpa buka daftar pilih lagi. Ini penting
+    // karena printer yang statusnya sudah "tersambung/dipasangkan" ke
+    // sistem Bluetooth HP biasanya BERHENTI memancarkan sinyal iklan
+    // (advertising) -- akibatnya walau sudah pernah disambungkan dari
+    // aplikasi ini, printer itu TIDAK akan ikut muncul lagi di daftar
+    // pilih Web Bluetooth (yang isinya hanya perangkat yg sedang
+    // memancarkan sinyal saat itu). getDevices() mengambil dari izin
+    // yang sudah pernah diberikan browser, jadi tidak perlu printer
+    // "kelihatan" saat scan baru.
+    if(navigator.bluetooth.getDevices){
+      try{
+        const lastId = localStorage.getItem(BT_PRINTER_LAST_ID_KEY);
+        const known = await navigator.bluetooth.getDevices();
+        if(known && known.length){
+          device = (lastId && known.find(d => d.id === lastId)) || known[known.length-1];
+        }
+      }catch(e){ /* API belum didukung penuh di browser ini -- lanjut ke cara biasa */ }
+    }
+
+    // Belum pernah ada izin sebelumnya (pertama kali) -> buka daftar
+    // pilih seperti biasa. Printer HANYA akan muncul di sini kalau
+    // sedang menyala, berdekatan, dan aktif memancarkan sinyal BLE --
+    // jadi pastikan printer dalam kondisi itu saat menyambungkan
+    // pertama kali.
+    if(!device){
+      device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: BT_PRINTER_SERVICE_UUIDS,
+      });
+    }
+
     const server = await device.gatt.connect();
     let writeChar = null;
 
@@ -2265,6 +2318,7 @@ async function connectBluetoothPrinter(){
     btPrinterDevice = device;
     btPrinterCharacteristic = writeChar;
     btPrinterDeviceName = device.name || 'Printer Bluetooth';
+    try{ localStorage.setItem(BT_PRINTER_LAST_ID_KEY, device.id); }catch(e){ /* opsional */ }
     device.addEventListener('gattserverdisconnected', ()=>{
       btPrinterCharacteristic = null;
       updatePrinterConnectionUI();
@@ -2272,7 +2326,15 @@ async function connectBluetoothPrinter(){
     showToast(`Terhubung ke ${btPrinterDeviceName}`);
     updatePrinterConnectionUI();
   }catch(err){
-    if(err.name !== 'NotFoundError') showToast('Gagal menyambungkan printer: ' + err.message, true);
+    if(err.name === 'NotFoundError'){
+      // Chooser tertutup tanpa memilih apa pun -- ini juga yang terjadi
+      // kalau printernya memang tidak muncul sama sekali di daftar.
+      // Beri tahu penyebab paling umum supaya toko tahu harus apa,
+      // bukan cuma diam tanpa penjelasan.
+      showToast('Printer tidak muncul di daftar? Pastikan printer menyala & berdekatan dengan HP, Bluetooth + izin Lokasi untuk browser aktif, dan printer belum tersambung ke aplikasi/HP lain.', true);
+    } else {
+      showToast('Gagal menyambungkan printer: ' + err.message, true);
+    }
   }
 }
 
@@ -2288,6 +2350,7 @@ async function sendToBluetoothPrinter(bytes){
 
 /* ---- Web USB ---- */
 let usbPrinterDevice = null, usbPrinterEndpoint = null;
+const USB_PRINTER_LAST_KEY = 'kba_admin_usb_printer_last';
 
 async function connectUsbPrinter(){
   if(!navigator.usb){
@@ -2295,7 +2358,37 @@ async function connectUsbPrinter(){
     return;
   }
   try{
-    const device = await navigator.usb.requestDevice({ filters: [] });
+    let device = null;
+
+    // Sama seperti Bluetooth: coba sambung ULANG OTOMATIS ke printer USB
+    // yang PERNAH diizinkan dari aplikasi ini sebelumnya, tanpa buka
+    // daftar pilih lagi. Ini menolong kasus printer thermal yang portnya
+    // sudah "diambil alih" driver printer sistem (Windows/Android) --
+    // perangkat itu kadang tidak lagi muncul di daftar pilih WebUSB yang
+    // baru dibuka, padahal browser sebenarnya masih punya izin akses ke
+    // perangkat itu dari sesi sebelumnya. getDevices() mengambil dari
+    // izin yang sudah pernah diberikan, tidak perlu muncul di list lagi.
+    if(navigator.usb.getDevices){
+      try{
+        const known = await navigator.usb.getDevices();
+        if(known && known.length){
+          let saved = null;
+          try{ saved = JSON.parse(localStorage.getItem(USB_PRINTER_LAST_KEY) || 'null'); }catch(e){ /* abaikan */ }
+          device = (saved && known.find(d =>
+            d.vendorId === saved.vendorId && d.productId === saved.productId &&
+            (!saved.serialNumber || d.serialNumber === saved.serialNumber)
+          )) || known[known.length-1];
+        }
+      }catch(e){ /* API belum didukung penuh di browser ini -- lanjut ke cara biasa */ }
+    }
+
+    // Belum pernah ada izin sebelumnya (pertama kali) -> buka daftar
+    // pilih seperti biasa. Printer HANYA akan muncul di sini kalau
+    // memang sedang terpasang & terdeteksi OS lewat kabel/USB-OTG.
+    if(!device){
+      device = await navigator.usb.requestDevice({ filters: [] });
+    }
+
     await device.open();
     if(device.configuration === null) await device.selectConfiguration(1);
     const iface = device.configuration.interfaces.find(i => i.alternates.some(a => a.endpoints.some(e => e.direction==='out')));
@@ -2306,10 +2399,23 @@ async function connectUsbPrinter(){
 
     usbPrinterDevice = device;
     usbPrinterEndpoint = endpoint.endpointNumber;
+    try{
+      localStorage.setItem(USB_PRINTER_LAST_KEY, JSON.stringify({
+        vendorId: device.vendorId, productId: device.productId, serialNumber: device.serialNumber || null
+      }));
+    }catch(e){ /* opsional */ }
     showToast(`Terhubung ke ${device.productName || 'printer USB'}`);
     updatePrinterConnectionUI();
   }catch(err){
-    if(err.name !== 'NotFoundError') showToast('Gagal menyambungkan printer USB: ' + err.message, true);
+    if(err.name === 'NotFoundError'){
+      // Chooser tertutup tanpa memilih apa pun -- ini juga yang terjadi
+      // kalau printernya memang tidak muncul sama sekali di daftar.
+      showToast('Printer tidak muncul di daftar? Cek: (1) pakai kabel data, bukan kabel isi-daya saja, (2) di HP Android perlu adaptor USB-OTG + izinkan akses USB saat muncul pop-up sistem, (3) kalau driver printer sudah terpasang di komputer, port USB-nya bisa "dikunci" driver itu sehingga tidak kelihatan oleh browser -- coba lepas-pasang ulang kabelnya atau pakai metode Bluetooth/Browser sebagai gantinya.', true);
+    } else if(err.name === 'SecurityError' || /claim/i.test(err.message||'')){
+      showToast('Printer USB terdeteksi tapi portnya sedang dipakai driver/aplikasi lain di sistem. Tutup aplikasi print lain lalu coba lagi, atau pakai metode Bluetooth/Browser.', true);
+    } else {
+      showToast('Gagal menyambungkan printer USB: ' + err.message, true);
+    }
   }
 }
 
