@@ -6,7 +6,10 @@
 <title>Admin — Klik Beli Aja Mart</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<!-- Pustaka scan barcode lewat kamera HP (dipakai di Kasir & Restok) -->
+<!-- Library scan barcode/QR via kamera HP (dipakai fitur Scan Barcode di
+     Kasir POS, Tambah Produk, & Restok). Kalau gagal dimuat (mis. tidak
+     ada koneksi internet saat itu), fitur scan kamera otomatis kasih
+     pesan yang jelas & tetap bisa input manual seperti biasa. -->
 <script src="https://cdn.jsdelivr.net/npm/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
 <style>
   :root{
@@ -173,7 +176,17 @@
     /* Di lebar ini sidebar tetap ada tapi jadi drawer off-canvas (bukan
        kolom tetap) supaya konten utama dapat ruang penuh -- dipakai untuk
        tablet & HP sekaligus, dibuka/tutup lewat tombol hamburger. */
-    #app.active{grid-template-columns:1fr;}
+    /* align-content:start PENTING -- tanpa ini, di mode HP grid #app
+       (topbar + konten utama, 2 baris) ikut memakai perilaku default
+       CSS Grid "align-content:normal" yang senilai "stretch": kalau
+       konten halamannya PENDEK (mis. tabel Kategori yang isinya
+       sedikit), sisa ruang kosong sampai penuh min-height:100vh malah
+       DIBAGI RATA ke SEMUA baris grid -- termasuk baris topbar -- jadi
+       topbar-nya ikut meregang tampak sangat tinggi (bukan cuma
+       sebaris kecil seperti seharusnya). align-content:start membuat
+       tiap baris cuma setinggi kontennya sendiri, tidak dipaksa
+       meregang mengisi sisa layar. */
+    #app.active{grid-template-columns:1fr; align-content:start;}
     .mobile-topbar{display:flex;}
     aside.sidebar{
       position:fixed; top:0; left:0; bottom:0; width:270px; max-width:84vw;
@@ -295,7 +308,7 @@
         <div>
           <div style="display:flex; gap:8px; margin-bottom:14px;">
             <input type="text" id="pos-search" placeholder="Cari nama produk, atau scan barcode..." oninput="renderPosProductGrid()" onkeydown="handlePosSearchKeydown(event)" autocomplete="off" style="flex:1; padding:11px 14px; border:1.5px solid var(--line); border-radius:10px; font-size:14px;">
-            <button class="btn btn-ghost" onclick="openCameraScan('pos')" title="Scan barcode pakai kamera HP" style="white-space:nowrap;">📷 Scan</button>
+            <button type="button" class="btn btn-primary" style="flex-shrink:0; padding:0 16px;" onclick="scanBarcodeForPos()" title="Scan barcode pakai kamera HP">📷</button>
           </div>
           <div id="pos-product-grid" style="display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:12px; max-height:70vh; overflow-y:auto; padding-right:4px;"></div>
         </div>
@@ -651,11 +664,12 @@
           <label>Barcode / SKU (untuk scan)</label>
           <div style="display:flex; gap:6px;">
             <input type="text" id="p-barcode" placeholder="Scan atau ketik manual" style="flex:1;">
+            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;" onclick="scanBarcodeForProduct()" title="Scan barcode pakai kamera HP">📷 Scan</button>
           </div>
         </div>
         <div class="field"><label>Stok Minimum (peringatan menipis)</label><input type="number" id="p-min-stock" value="5" min="0"></div>
       </div>
-      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:-8px;">💡 Klik ke kolom Barcode lalu scan pakai alat barcode scanner (USB/Bluetooth) — kode otomatis terisi.</p>
+      <p style="font-size:11.5px; color:var(--ink-soft); margin-top:-8px;">💡 Klik tombol "📷 Scan" untuk scan pakai kamera HP, atau klik ke kolom Barcode lalu scan pakai alat barcode scanner (USB/Bluetooth) — kode otomatis terisi.</p>
       <div class="field">
         <label>Foto Produk</label>
         <div style="display:flex; gap:14px; align-items:flex-start;">
@@ -696,11 +710,11 @@
     <div class="modal-body">
       <div class="field">
         <label>Scan Barcode (opsional)</label>
-        <div style="display:flex; gap:8px;">
+        <div style="display:flex; gap:6px;">
           <input type="text" id="restock-scan" placeholder="Klik di sini lalu scan barcode..." autocomplete="off" style="flex:1;">
-          <button class="btn btn-ghost" onclick="openCameraScan('restock')" title="Scan barcode pakai kamera HP" style="white-space:nowrap;">📷 Scan</button>
+          <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;" onclick="scanBarcodeForRestock()" title="Scan barcode pakai kamera HP">📷 Scan</button>
         </div>
-        <p style="font-size:11px; color:var(--ink-soft); margin-top:5px;">Colok alat barcode scanner ke HP/tablet/komputer lalu scan di kolom ini, ATAU tekan tombol "📷 Scan" untuk pakai kamera HP langsung — produk otomatis terpilih di bawah.</p>
+        <p style="font-size:11px; color:var(--ink-soft); margin-top:5px;">Klik "📷 Scan" untuk pakai kamera HP, atau colok alat barcode scanner ke HP/tablet/komputer, klik kolom ini, lalu scan — produk otomatis terpilih di bawah.</p>
       </div>
       <div class="field">
         <label>Produk</label>
@@ -730,20 +744,14 @@
   </div>
 </div>
 
-<!-- ============ MODAL: SCAN BARCODE VIA KAMERA HP ============
-     Dipakai bersama oleh Kasir (POS) & Restok -- konteks pemanggil
-     disimpan di variabel cameraScanContext supaya hasil scan tahu
-     mau diarahkan ke mana. -->
-<div class="modal-overlay" id="modal-camera-scan">
+<!-- ============ MODAL: SCAN BARCODE VIA KAMERA HP ============ -->
+<div class="modal-overlay" id="modal-barcode-scan">
   <div class="modal-box" style="max-width:420px;">
-    <div class="modal-head"><h3>📷 Scan Barcode</h3><button class="modal-close" onclick="closeCameraScan()">✕</button></div>
+    <div class="modal-head"><h3>📷 Scan Barcode</h3><button class="modal-close" onclick="closeBarcodeScanner()">✕</button></div>
     <div class="modal-body">
-      <div id="camera-scan-reader" style="width:100%; border-radius:12px; overflow:hidden; background:#000; min-height:220px;"></div>
-      <p id="camera-scan-status" style="font-size:12.5px; color:var(--ink-soft); text-align:center; margin-top:12px;">Membuka kamera...</p>
-      <p style="font-size:11px; color:var(--ink-soft); text-align:center; margin-top:4px;">Arahkan kamera ke barcode produk sampai terbaca otomatis. Butuh izin akses kamera dari browser.</p>
-    </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="closeCameraScan()">Tutup</button>
+      <div id="barcode-scanner-viewport" style="width:100%; min-height:260px; border-radius:12px; overflow:hidden; background:#000;"></div>
+      <p id="barcode-scan-status" style="font-size:12.5px; color:var(--ink-soft); margin-top:10px; text-align:center;">Meminta izin kamera…</p>
+      <p style="font-size:11px; color:var(--ink-soft); margin-top:8px; text-align:center;">Butuh izin kamera & koneksi HTTPS. Kalau kamera tidak bisa diakses, tutup jendela ini lalu ketik/scan manual seperti biasa.</p>
     </div>
   </div>
 </div>
@@ -821,15 +829,17 @@
         <option value="browser">Dialog Print Browser (PDF / printer sistem)</option>
         <option value="bluetooth">Langsung ke Printer Bluetooth (tanpa install)</option>
         <option value="usb">Langsung ke Printer USB (tanpa install)</option>
+        <option value="rawbt">Kirim ke Aplikasi RawBT (Android, utk Bluetooth Classic/SPP)</option>
       </select>
+      <p style="font-size:11px; color:var(--ink-soft); margin:6px 0 0;">💡 Tips: kalau printer tidak mendukung Bluetooth Low Energy (BLE) -- umum di printer 58mm Bluetooth Classic/SPP -- pakai <b>Kirim ke Aplikasi RawBT</b> (Android) atau <b>Dialog Print Browser</b>. Kalau portnya "dikunci" driver bawaan sistem saat dicolok USB, pakai <b>Dialog Print Browser</b> juga -- asal printer sudah terpasang/terdaftar sebagai printer di HP/komputer, metode ini paling kompatibel untuk hampir semua jenis printer thermal.</p>
 
       <div id="pos-print-connect-box" style="display:none; margin-top:10px; padding:10px 12px; background:var(--paper); border-radius:10px;">
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
+        <div id="pos-print-connect-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
           <span id="pos-print-status" style="font-size:12px; color:var(--ink-soft); flex:1;">Belum tersambung ke printer.</span>
           <button class="btn btn-ghost btn-sm" id="pos-print-connect-btn" onclick="connectSelectedPrinter()">🔗 Sambungkan</button>
         </div>
         <p id="pos-print-hint" style="font-size:11px; color:var(--ink-soft); margin:8px 0 0;"></p>
-        <div id="pos-print-hint-actions" style="margin-top:8px;"></div>
+        <button class="btn btn-ghost btn-sm" id="pos-print-fallback-btn" style="display:none; margin-top:8px; width:100%;">🔁 Coba metode lain</button>
       </div>
     </div>
     <div class="modal-foot">
@@ -965,7 +975,6 @@ const TAB_TITLES = {
 };
 
 function switchTab(name){
-  if(cameraScanner) closeCameraScan(); // jaga-jaga: matikan kamera kalau masih aktif saat pindah menu
   document.querySelectorAll('.tab-panel').forEach(p=>p.style.display='none');
   document.getElementById('tab-'+name).style.display='block';
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
@@ -1412,19 +1421,11 @@ async function submitRestock(){
 
 // Input scan barcode di modal restock -- scanner USB/Bluetooth "mengetik"
 // kode lalu otomatis menekan Enter, jadi cukup dengar event Enter di sini.
-// Logikanya sama dengan hasil scan kamera HP (lihat processRestockScannedCode).
-document.addEventListener('keydown', (e)=>{
-  if(e.key !== 'Enter') return;
-  if(e.target && e.target.id === 'restock-scan'){
-    e.preventDefault();
-    const code = e.target.value.trim();
-    if(!code) return;
-    processRestockScannedCode(code);
-    e.target.value = '';
-  }
-});
-
-function processRestockScannedCode(code){
+// Logikanya dipisah ke handleRestockScanCode() supaya bisa dipakai juga
+// oleh fitur scan kamera (scanBarcodeForRestock) di bawah.
+function handleRestockScanCode(code){
+  code = String(code||'').trim();
+  if(!code) return;
   const found = lookupProductByCode(code);
   if(found){
     document.getElementById('restock-product').value = found.Product_ID;
@@ -1434,80 +1435,113 @@ function processRestockScannedCode(code){
     showToast('Barcode tidak ditemukan di katalog produk', true);
   }
 }
+document.addEventListener('keydown', (e)=>{
+  if(e.key !== 'Enter') return;
+  if(e.target && e.target.id === 'restock-scan'){
+    e.preventDefault();
+    const code = e.target.value.trim();
+    handleRestockScanCode(code);
+    e.target.value = '';
+  }
+});
 
 /* ============================================================
-   SCAN BARCODE VIA KAMERA HP (dipakai di Kasir & Restok)
-   Pakai pustaka html5-qrcode (load via CDN di <head>), yang membuka
-   kamera lewat getUserMedia lalu mendekode barcode di browser --
-   tidak ada foto/data yang dikirim keluar, semua diproses lokal.
-   Butuh HTTPS (atau localhost) supaya browser mengizinkan akses kamera.
-   ============================================================ */
-let cameraScanner = null;      // instance Html5Qrcode yang sedang aktif
-let cameraScanContext = null;  // 'pos' atau 'restock' -- menentukan hasil scan diarahkan ke mana
+   SCAN BARCODE VIA KAMERA HP
+   ============================================================
+   Dipakai di 3 tempat: Kasir (POS), Tambah/Edit Produk, & Restok.
+   Selain lewat kamera, semua kolom terkait TETAP bisa diisi manual
+   atau lewat alat barcode scanner USB/Bluetooth fisik seperti biasa --
+   fitur kamera ini murni tambahan, bukan pengganti.
+   Pakai library "html5-qrcode" (dimuat lewat CDN di <head>) yang
+   mendukung baik format QR maupun barcode 1D umum (EAN-13, EAN-8,
+   UPC-A, Code128, dll) sekaligus, jadi cocok untuk barcode kemasan
+   produk toko pada umumnya. */
+let barcodeScannerInstance = null;
+let barcodeScanCallback = null;
 
-function openCameraScan(context){
+function openBarcodeScanner(onDetected){
   if(typeof Html5Qrcode === 'undefined'){
-    showToast('Pustaka scan kamera gagal dimuat -- pastikan perangkat terhubung internet, lalu coba lagi', true);
+    showToast('Fitur scan kamera gagal dimuat (butuh koneksi internet saat membuka halaman ini). Silakan input manual atau pakai alat barcode scanner.', true);
     return;
   }
-  if(!navigator.mediaDevices || !window.isSecureContext){
-    showToast('Scan kamera butuh koneksi HTTPS. Buka halaman ini lewat alamat https://', true);
+  if(!(window.isSecureContext)){
+    showToast('Scan kamera butuh koneksi HTTPS (atau localhost). Silakan input manual atau pakai alat barcode scanner.', true);
     return;
   }
-  cameraScanContext = context;
-  document.getElementById('camera-scan-status').textContent = 'Meminta izin kamera...';
-  openModal('modal-camera-scan');
+  barcodeScanCallback = onDetected;
+  const statusEl = document.getElementById('barcode-scan-status');
+  statusEl.textContent = 'Meminta izin kamera…';
+  openModal('modal-barcode-scan');
 
-  cameraScanner = new Html5Qrcode('camera-scan-reader', {
-    formatsToSupport: [
-      Html5QrcodeSupportedFormats.EAN_13, Html5QrcodeSupportedFormats.EAN_8,
-      Html5QrcodeSupportedFormats.UPC_A, Html5QrcodeSupportedFormats.UPC_E,
-      Html5QrcodeSupportedFormats.CODE_128, Html5QrcodeSupportedFormats.CODE_39,
-      Html5QrcodeSupportedFormats.CODE_93, Html5QrcodeSupportedFormats.ITF,
-      Html5QrcodeSupportedFormats.QR_CODE,
-    ],
-    verbose: false,
+  barcodeScannerInstance = new Html5Qrcode('barcode-scanner-viewport');
+  const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+
+  // Utamakan kamera belakang (environment) -- lebih cocok untuk scan
+  // barcode fisik dibanding kamera depan.
+  barcodeScannerInstance.start(
+    { facingMode: 'environment' },
+    config,
+    (decodedText) => {
+      // Berhasil terbaca -- getarkan HP kalau didukung sbg sinyal
+      // "sukses" tanpa perlu suara (aman dipakai di toko yang ramai),
+      // lalu tutup kamera & kirim hasilnya ke pemanggil.
+      if(navigator.vibrate) navigator.vibrate(80);
+      const cb = barcodeScanCallback;
+      closeBarcodeScanner();
+      if(cb) cb(decodedText);
+    },
+    () => { /* dipanggil terus-menerus tiap frame yg belum kebaca -- ini NORMAL, abaikan saja */ }
+  ).then(()=>{
+    statusEl.textContent = 'Arahkan kamera ke barcode produk…';
+  }).catch((err)=>{
+    statusEl.textContent = 'Gagal mengakses kamera.';
+    showToast('Tidak bisa mengakses kamera: pastikan sudah mengizinkan akses kamera untuk situs ini di pengaturan browser/HP.', true);
   });
+}
 
-  cameraScanner.start(
-    { facingMode: 'environment' }, // kamera belakang HP -- lebih gampang buat scan barang
-    { fps: 10, qrbox: { width: 260, height: 160 } },
-    onCameraScanSuccess,
-    ()=>{ /* diamkan -- ini terpanggil tiap frame yang belum berhasil dibaca, bukan error */ }
-  ).catch(err=>{
-    const msg = (err && err.message) ? err.message : String(err);
-    document.getElementById('camera-scan-status').textContent = '⚠️ Tidak bisa mengakses kamera.';
-    showToast('Gagal mengakses kamera: ' + msg + ' -- pastikan izin kamera sudah diberikan ke browser.', true);
-  });
+function closeBarcodeScanner(){
+  closeModal('modal-barcode-scan');
+  if(barcodeScannerInstance){
+    const inst = barcodeScannerInstance;
+    barcodeScannerInstance = null;
+    inst.stop().then(()=>inst.clear()).catch(()=>{ try{ inst.clear(); }catch(e){} });
+  }
+  barcodeScanCallback = null;
+}
 
-  // begitu stream kamera aktif, ganti teks status (start() di atas resolve setelah ini)
-  setTimeout(()=>{
-    const statusEl = document.getElementById('camera-scan-status');
-    if(cameraScanner && statusEl && statusEl.textContent === 'Meminta izin kamera...'){
-      statusEl.textContent = 'Arahkan kamera ke barcode produk...';
+// 1) Kasir (POS) -- hasil scan diperlakukan sama seperti scan pakai alat
+// fisik: kalau kodenya cocok produk, langsung masuk keranjang.
+function scanBarcodeForPos(){
+  openBarcodeScanner((code)=>{
+    const input = document.getElementById('pos-search');
+    const found = lookupProductByCode(code);
+    if(found){
+      if(Number(found.Stock) <= 0){ showToast(`${found.Product_Name} — stok habis`, true); }
+      else { addToPosCart(found.Product_ID); showToast(`${found.Product_Name} ditambahkan`); }
+      input.value = '';
+      renderPosProductGrid();
+    } else {
+      // tidak cocok kode apa pun -- perlakukan sbg pencarian nama biasa
+      input.value = code;
+      renderPosProductGrid();
+      showToast('Barcode tidak ditemukan di katalog produk', true);
     }
-  }, 800);
+  });
 }
 
-function onCameraScanSuccess(decodedText){
-  if(navigator.vibrate) navigator.vibrate(120); // getaran singkat sebagai konfirmasi scan berhasil
-  const context = cameraScanContext;
-  const code = String(decodedText||'').trim();
-  closeCameraScan();
-  if(!code) return;
-  if(context === 'pos') processPosScannedCode(code);
-  else if(context === 'restock') processRestockScannedCode(code);
+// 2) Tambah/Edit Produk -- isi kolom Barcode/SKU.
+function scanBarcodeForProduct(){
+  openBarcodeScanner((code)=>{
+    document.getElementById('p-barcode').value = code;
+    showToast('Barcode terisi: ' + code);
+  });
 }
 
-function closeCameraScan(){
-  closeModal('modal-camera-scan');
-  const runningScanner = cameraScanner;
-  cameraScanner = null;
-  if(runningScanner){
-    runningScanner.stop()
-      .then(()=>runningScanner.clear())
-      .catch(()=>{ /* diamkan -- kamera mungkin sudah berhenti sendiri (mis. modal ditutup cepat) */ });
-  }
+// 3) Restok / Koreksi Stok -- pilih otomatis produknya kalau cocok.
+function scanBarcodeForRestock(){
+  openBarcodeScanner((code)=>{
+    handleRestockScanCode(code);
+  });
 }
 
 /* ============================================================
@@ -1871,23 +1905,12 @@ function handlePosSearchKeydown(e){
   const found = lookupProductByCode(code);
   if(found){
     e.preventDefault();
-    processPosScannedCode(code);
-    input.value = '';
-  }
-  // kalau tidak cocok persis kode apa pun, biarkan saja -- anggap pencarian nama biasa
-}
-
-// Dipakai bersama oleh scanner USB/Bluetooth (lewat handlePosSearchKeydown di atas)
-// dan scan kamera HP (lewat onCameraScanSuccess) -- satu jalur logika, dua sumber input.
-function processPosScannedCode(code){
-  const found = lookupProductByCode(code);
-  if(found){
     if(Number(found.Stock) <= 0){ showToast(`${found.Product_Name} — stok habis`, true); }
     else { addToPosCart(found.Product_ID); showToast(`${found.Product_Name} ditambahkan`); }
-  } else {
-    showToast('Barcode tidak dikenali di katalog produk', true);
+    input.value = '';
+    renderPosProductGrid();
   }
-  renderPosProductGrid();
+  // kalau tidak cocok persis kode apa pun, biarkan saja -- anggap pencarian nama biasa
 }
 
 function renderPosProductGrid(){
@@ -2102,7 +2125,7 @@ function closePosReceiptModal(){
 }
 
 /* ============================================================
-   CETAK STRUK -- 3 metode
+   CETAK STRUK -- 4 metode
    ============================================================
    1. "browser"   -- dialog print bawaan browser (CSS @page per ukuran
       kertas). Paling universal tapi di HP/tablet BERGANTUNG pada printer
@@ -2111,14 +2134,24 @@ function closePosReceiptModal(){
    2. "bluetooth" -- kirim perintah ESC/POS mentah langsung ke printer
       lewat Web Bluetooth (GATT/BLE). TIDAK perlu app tambahan, tapi
       HANYA jalan untuk printer Bluetooth Low Energy (kebanyakan printer
-      thermal generik sudah BLE, tapi sebagian printer lama masih pakai
-      Bluetooth Classic/SPP yang TIDAK didukung Web Bluetooth -- ini
-      keterbatasan dari browser, bukan dari website ini). Didukung di
-      Chrome/Edge Android & Desktop; TIDAK didukung Safari/iOS sama
-      sekali (keterbatasan Apple/WebKit).
+      thermal generik sudah BLE, tapi sebagian printer -- termasuk banyak
+      printer 58mm murah -- masih pakai Bluetooth Classic/SPP yang TIDAK
+      didukung Web Bluetooth -- ini keterbatasan dari browser, bukan dari
+      website ini). Didukung di Chrome/Edge Android & Desktop; TIDAK
+      didukung Safari/iOS sama sekali (keterbatasan Apple/WebKit).
    3. "usb"       -- sama seperti Bluetooth tapi lewat Web USB (kabel USB
       langsung, atau USB-OTG di HP/tablet Android). Didukung Chrome/Edge
       Android & Desktop, tidak didukung iOS.
+   4. "rawbt"     -- khusus Android: kirim byte ESC/POS mentah (sama
+      persis dengan yang dipakai metode "bluetooth"/"usb" di atas) ke
+      aplikasi RawBT lewat Android Intent, lalu RawBT sendiri yang
+      menangani koneksi ke printer (Bluetooth Classic/SPP, BLE, USB,
+      maupun WiFi -- apa pun yang sudah dipasang di dalam RawBT). Ini
+      jalan keluar paling andal untuk printer Bluetooth Classic/SPP yang
+      TIDAK bisa disambungkan langsung lewat Web Bluetooth (poin #2 di
+      atas) -- pengguna cukup pasang & atur printer SEKALI di aplikasi
+      RawBT, sisanya otomatis tiap kali cetak dari sini. Perlu aplikasi
+      RawBT terpasang di HP Android; tidak berlaku untuk iOS/Desktop.
    ============================================================ */
 const PRINTER_PAPER_SIZES = {
   '57x37': { w:57, h:37, font:8.5, chars:32 },
@@ -2156,24 +2189,66 @@ function onPrintMethodChange(){
   savePrintMethodPref();
   const method = document.getElementById('pos-print-method').value;
   const box = document.getElementById('pos-print-connect-box');
+  const connectRow = document.getElementById('pos-print-connect-row');
   const hint = document.getElementById('pos-print-hint');
-  const actions = document.getElementById('pos-print-hint-actions');
-  if(actions) actions.innerHTML = ''; // buang tombol solusi dari percobaan sambung sebelumnya (kalau ada)
+  const fallbackBtn = document.getElementById('pos-print-fallback-btn');
+  if(fallbackBtn) fallbackBtn.style.display = 'none'; // reset tiap ganti metode
   if(method === 'browser'){
     box.style.display = 'none';
     return;
   }
   box.style.display = 'block';
+  if(method === 'rawbt'){
+    // RawBT tidak butuh proses "sambung" dari sisi web -- printernya
+    // dipasang & dipilih SEKALI langsung di dalam aplikasi RawBT,
+    // jadi baris status/tombol "Sambungkan" disembunyikan di sini.
+    if(connectRow) connectRow.style.display = 'none';
+    hint.textContent = 'Pastikan aplikasi RawBT sudah terpasang di HP Android & printernya sudah dipilih/diatur sebagai printer default di dalam aplikasi RawBT (buka RawBT > pilih printer > jadikan default) -- ini cara paling andal untuk printer Bluetooth Classic/SPP yang tidak terdeteksi metode "Langsung ke Printer Bluetooth". Tidak berlaku di iOS/Desktop.';
+    return;
+  }
+  if(connectRow) connectRow.style.display = 'flex';
   if(method === 'bluetooth'){
     hint.textContent = !navigator.bluetooth
       ? '⚠️ Browser ini tidak mendukung Bluetooth Web. Pakai Chrome di Android/Desktop (tidak didukung di Safari/iOS).'
-      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan", kemungkinan printer memakai Bluetooth Classic — pakai USB atau metode Browser sebagai gantinya.';
+      : 'Hanya mendukung printer Bluetooth Low Energy (BLE). Kalau printer tidak muncul saat "Sambungkan": aktifkan Lokasi HP + izinkan Chrome akses Lokasi/perangkat sekitar, pastikan printer menyala & belum tersambung ke aplikasi lain, atau printer mungkin masih Bluetooth Classic — pakai metode "Kirim ke Aplikasi RawBT" atau Browser sebagai gantinya.';
   } else if(method === 'usb'){
     hint.textContent = !navigator.usb
       ? '⚠️ Browser ini tidak mendukung USB Web. Pakai Chrome/Edge di Android (perlu kabel USB-OTG) atau Desktop (tidak didukung di Safari/iOS).'
-      : 'Colok printer lewat kabel USB (atau USB-OTG di HP/tablet Android), lalu klik Sambungkan.';
+      : 'Colok printer lewat kabel USB (pakai kabel data, bukan kabel isi-daya saja), atau USB-OTG di HP/tablet Android, lalu klik Sambungkan. Kalau printer tidak muncul di daftar padahal sudah pernah tersambung, kemungkinan portnya sedang dipakai driver printer sistem -- coba lepas-pasang kabel atau tutup aplikasi print lain dulu.';
   }
   updatePrinterConnectionUI();
+}
+
+// Beralih cepat ke metode cetak lain -- dipakai sebagai jalan keluar
+// kalau metode Bluetooth/USB langsung tidak bisa dipakai karena
+// keterbatasan printer (Bluetooth Classic, bukan BLE) atau karena port
+// USB-nya sudah "dikunci" driver sistem.
+function switchPrintMethodTo(method, label){
+  const sel = document.getElementById('pos-print-method');
+  if(!sel) return;
+  sel.value = method;
+  savePrintMethodPref();
+  onPrintMethodChange();
+  showToast('Metode cetak diganti ke ' + label + '.');
+}
+
+// Tampilkan pesan bantuan secara PERMANEN di dalam kotak sambung
+// (bukan cuma lewat toast yang hilang dalam beberapa detik), supaya
+// penggunanya masih bisa baca penjelasannya sambil mencoba solusinya.
+function setPrintHintPersistent(text){
+  const hint = document.getElementById('pos-print-hint');
+  if(hint) hint.textContent = text;
+}
+// Tombolnya dibuat dinamis (metode & labelnya beda-beda tergantung
+// jenis error) supaya sarannya relevan: printer Bluetooth Classic
+// diarahkan ke RawBT, sedangkan port USB yang dikunci driver sistem
+// diarahkan ke Dialog Print Browser (justru memanfaatkan driver itu).
+function showPrintFallbackButton(method, label){
+  const btn = document.getElementById('pos-print-fallback-btn');
+  if(!btn) return;
+  btn.textContent = '🔁 ' + label;
+  btn.onclick = () => switchPrintMethodTo(method, label);
+  btn.style.display = 'block';
 }
 
 function updatePrinterConnectionUI(){
@@ -2202,12 +2277,26 @@ function printPosReceipt(){
     printReceiptRaw(lastReceipt, paper, method);
     return;
   }
+  if(method === 'rawbt'){
+    printReceiptViaRawBT(lastReceipt, paper);
+    return;
+  }
   // default: dialog print browser
   const content = document.getElementById('pos-receipt-print').innerHTML;
   printReceiptHtml(content, sizeKey);
 }
 
-/* ---------- Metode 1: Dialog print browser (CSS @page) ---------- */
+/* ---------- Metode 1: Dialog print browser (CSS @page) ----------
+   PENTING: tinggi kertas TIDAK dipatok ke angka preset (mis. 40mm/80mm)
+   karena kertas thermal itu gulungan menerus -- panjang struk berubah-
+   ubah tergantung jumlah item. Kalau tinggi @page dipatok pendek sementara
+   isi struknya panjang (banyak item), banyak dialog print/driver printer
+   akan otomatis "fit to page" alias MENYUSUTKAN seluruh struk supaya muat
+   di satu halaman pendek itu -- hasilnya tampilan/cetakan jadi kecil
+   sekali walau struknya panjang. Untuk menghindarinya: render dulu isi
+   struk apa adanya, ukur tinggi sebenarnya, baru set tinggi @page persis
+   sesuai hasil ukur itu sebelum dialog cetak dibuka -- jadi tidak pernah
+   ada alasan bagi printer/driver untuk menyusutkan kontennya. */
 function printReceiptHtml(contentHtml, sizeKey){
   const size = PRINTER_PAPER_SIZES[sizeKey] || PRINTER_PAPER_SIZES['80x140'];
   let iframe = document.getElementById('kba-print-iframe');
@@ -2222,8 +2311,8 @@ function printReceiptHtml(contentHtml, sizeKey){
   doc.open();
   doc.write(`
     <!DOCTYPE html><html><head><meta charset="utf-8"><title>Struk</title>
-    <style>
-      @page{ size:${size.w}mm ${size.h}mm; margin:0; }
+    <style id="kba-page-style">
+      @page{ size:${size.w}mm 2000mm; margin:0; }
       *{box-sizing:border-box;}
       html,body{ margin:0; padding:0; }
       body{
@@ -2247,6 +2336,17 @@ function printReceiptHtml(contentHtml, sizeKey){
 
   setTimeout(()=>{
     try{
+      // Ukur tinggi struk yang sudah dirender (px), lalu timpa tinggi
+      // @page dengan tinggi PAS itu (+ sedikit jaga-jaga) supaya struk
+      // panjang tetap tercetak dalam ukuran normal, tidak diperkecil.
+      const PX_PER_MM = 96 / 25.4;
+      const contentHeightPx = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+      const heightMm = Math.max(size.h, Math.ceil(contentHeightPx / PX_PER_MM) + 4);
+      const pageStyle = doc.getElementById('kba-page-style');
+      if(pageStyle) pageStyle.textContent = pageStyle.textContent.replace(
+        `@page{ size:${size.w}mm 2000mm; margin:0; }`,
+        `@page{ size:${size.w}mm ${heightMm}mm; margin:0; }`
+      );
       iframe.contentWindow.focus();
       iframe.contentWindow.print();
     }catch(err){
@@ -2340,6 +2440,45 @@ async function printReceiptRaw(r, paper, method){
   }
 }
 
+/* ---------- Metode 4: Aplikasi RawBT (Android) ----------
+   RawBT (https://rawbt.ru) adalah aplikasi Android yang jadi "jembatan"
+   antara halaman web dan printer thermal -- ia sendiri yang mengurus
+   koneksi ke printernya (Bluetooth Classic/SPP, BLE, USB, atau WiFi),
+   jadi cocok untuk printer Bluetooth Classic/SPP yang TIDAK bisa
+   disambungkan langsung lewat Web Bluetooth (lihat catatan metode
+   "bluetooth" di atas). Pengguna cukup pasang printernya SEKALI di
+   dalam aplikasi RawBT (pilih sbg printer default), sisanya otomatis.
+
+   Cara kerja: kita pakai byte ESC/POS yang SAMA PERSIS dengan yang
+   dipakai metode Bluetooth/USB mentah di atas (jadi hasil cetaknya
+   konsisten & tidak ikut disusutkan seperti metode dialog print
+   browser), lalu kirim lewat Android Intent bawaan yang didukung
+   langsung oleh Chrome tanpa perlu JS SDK tambahan:
+     intent:base64,<data base64>#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;
+   Kalau RawBT belum terpasang, Android/Chrome otomatis mengarahkan ke
+   halaman Play Store aplikasi tsb. */
+function bytesToBase64(bytes){
+  let binary = '';
+  const CHUNK = 0x8000; // hindari batas argumen fungsi utk larik besar
+  for(let i=0; i<bytes.length; i+=CHUNK){
+    binary += String.fromCharCode.apply(null, bytes.subarray(i, i+CHUNK));
+  }
+  return btoa(binary);
+}
+
+function printReceiptViaRawBT(r, paper){
+  try{
+    const lines = buildReceiptTextLines(r, paper.chars);
+    const bytes = textToEscPosBytes(lines);
+    const base64Data = bytesToBase64(bytes);
+    const intentUrl = 'intent:base64,' + base64Data + '#Intent;scheme=rawbt;package=ru.a402d.rawbtprinter;end;';
+    window.location.href = intentUrl;
+    showToast('Membuka aplikasi RawBT untuk mencetak…');
+  }catch(err){
+    showToast('Gagal membuka RawBT: ' + (err.message || err), true);
+  }
+}
+
 /* ---- Web Bluetooth (BLE) ---- */
 let btPrinterDevice = null, btPrinterCharacteristic = null, btPrinterDeviceName = null;
 const BT_PRINTER_SERVICE_UUIDS = [
@@ -2349,16 +2488,48 @@ const BT_PRINTER_SERVICE_UUIDS = [
   '0000ffe0-0000-1000-8000-00805f9b34fb', // modul HM-10/serial-over-BLE
 ];
 
+const BT_PRINTER_LAST_ID_KEY = 'kba_admin_bt_printer_last_id';
+
 async function connectBluetoothPrinter(){
   if(!navigator.bluetooth){
     showToast('Browser ini tidak mendukung Bluetooth Web (pakai Chrome Android/Desktop)', true);
     return;
   }
   try{
-    const device = await navigator.bluetooth.requestDevice({
-      acceptAllDevices: true,
-      optionalServices: BT_PRINTER_SERVICE_UUIDS,
-    });
+    let device = null;
+
+    // Coba sambung ULANG OTOMATIS ke printer yang PERNAH diizinkan dari
+    // aplikasi ini sebelumnya, tanpa buka daftar pilih lagi. Ini penting
+    // karena printer yang statusnya sudah "tersambung/dipasangkan" ke
+    // sistem Bluetooth HP biasanya BERHENTI memancarkan sinyal iklan
+    // (advertising) -- akibatnya walau sudah pernah disambungkan dari
+    // aplikasi ini, printer itu TIDAK akan ikut muncul lagi di daftar
+    // pilih Web Bluetooth (yang isinya hanya perangkat yg sedang
+    // memancarkan sinyal saat itu). getDevices() mengambil dari izin
+    // yang sudah pernah diberikan browser, jadi tidak perlu printer
+    // "kelihatan" saat scan baru.
+    if(navigator.bluetooth.getDevices){
+      try{
+        const lastId = localStorage.getItem(BT_PRINTER_LAST_ID_KEY);
+        const known = await navigator.bluetooth.getDevices();
+        if(known && known.length){
+          device = (lastId && known.find(d => d.id === lastId)) || known[known.length-1];
+        }
+      }catch(e){ /* API belum didukung penuh di browser ini -- lanjut ke cara biasa */ }
+    }
+
+    // Belum pernah ada izin sebelumnya (pertama kali) -> buka daftar
+    // pilih seperti biasa. Printer HANYA akan muncul di sini kalau
+    // sedang menyala, berdekatan, dan aktif memancarkan sinyal BLE --
+    // jadi pastikan printer dalam kondisi itu saat menyambungkan
+    // pertama kali.
+    if(!device){
+      device = await navigator.bluetooth.requestDevice({
+        acceptAllDevices: true,
+        optionalServices: BT_PRINTER_SERVICE_UUIDS,
+      });
+    }
+
     const server = await device.gatt.connect();
     let writeChar = null;
 
@@ -2386,6 +2557,7 @@ async function connectBluetoothPrinter(){
     btPrinterDevice = device;
     btPrinterCharacteristic = writeChar;
     btPrinterDeviceName = device.name || 'Printer Bluetooth';
+    try{ localStorage.setItem(BT_PRINTER_LAST_ID_KEY, device.id); }catch(e){ /* opsional */ }
     device.addEventListener('gattserverdisconnected', ()=>{
       btPrinterCharacteristic = null;
       updatePrinterConnectionUI();
@@ -2393,7 +2565,22 @@ async function connectBluetoothPrinter(){
     showToast(`Terhubung ke ${btPrinterDeviceName}`);
     updatePrinterConnectionUI();
   }catch(err){
-    if(err.name !== 'NotFoundError') showToast('Gagal menyambungkan printer: ' + err.message, true);
+    if(err.name === 'NotFoundError'){
+      // Chooser tertutup tanpa memilih apa pun -- ini juga yang terjadi
+      // kalau printernya memang tidak muncul sama sekali di daftar.
+      // Beri tahu penyebab paling umum supaya toko tahu harus apa,
+      // bukan cuma diam tanpa penjelasan. Ditulis PERMANEN di kotak
+      // (bukan cuma toast sekilas) + kasih tombol jalan pintas ke
+      // metode Browser, karena banyak printer thermal murah pakai
+      // Bluetooth Classic (SPP) yang MEMANG TIDAK BISA dideteksi Web
+      // Bluetooth sama sekali -- ini keterbatasan browser, bukan bug.
+      const msg = 'Printer tidak muncul di daftar? Pastikan printer menyala & berdekatan dengan HP, Bluetooth + izin Lokasi untuk browser aktif, dan printer belum tersambung ke aplikasi/HP lain. Kalau printer Anda memakai Bluetooth Classic (SPP) -- bukan Bluetooth Low Energy/BLE -- printer TIDAK akan pernah muncul di sini karena keterbatasan bawaan browser. Pakai tombol di bawah untuk beralih ke Aplikasi RawBT (Android).';
+      showToast(msg, true);
+      setPrintHintPersistent(msg);
+      showPrintFallbackButton('rawbt', 'Pakai Aplikasi RawBT');
+    } else {
+      showToast('Gagal menyambungkan printer: ' + err.message, true);
+    }
   }
 }
 
@@ -2407,101 +2594,16 @@ async function sendToBluetoothPrinter(bytes){
   }
 }
 
-/* ---- Web USB ----
-   CATATAN PENTING soal printer USB "terdeteksi tapi gagal tersambung":
-   Banyak printer thermal 58/80mm mengidentifikasi diri sebagai USB
-   Printer Class (class 7) ke sistem operasi. Begitu dicolok, Windows
-   (atau HP Android tertentu) OTOMATIS memasang driver printer bawaan
-   ke port itu. Driver bawaan itu MENGUNCI interface USB-nya, sehingga
-   saat WebUSB (browser) mencoba device.claimInterface(), permintaan
-   itu ditolak sistem operasi -- bukan bug di aplikasi ini, dan bukan
-   berarti kabel/koneksi bermasalah. requestDevice() tetap berhasil
-   (makanya printer "terlihat" di dialog pemilihan), tapi claimInterface
-   gagal setelahnya, jadi status tetap "Belum tersambung".
-   Solusi permanen: ganti driver interface printer itu ke WinUSB pakai
-   Zadig (zadig.akeo.ie) -- sekali setting per komputer, per printer.
-   Solusi cepat tanpa install apa-apa: pakai metode "Dialog Print
-   Browser", yang justru MEMANFAATKAN driver bawaan itu (lewat print
-   dialog sistem), bukan melawannya. */
+/* ---- Web USB ---- */
 let usbPrinterDevice = null, usbPrinterEndpoint = null;
+const USB_PRINTER_LAST_KEY = 'kba_admin_usb_printer_last';
 
-function resetUsbPrintHint(){
-  // bersihkan pesan solusi dari percobaan sebelumnya sebelum mencoba sambung lagi
-  const hint = document.getElementById('pos-print-hint');
-  const actions = document.getElementById('pos-print-hint-actions');
-  if(hint) hint.textContent = navigator.usb
-    ? 'Colok printer lewat kabel USB (atau USB-OTG di HP/tablet Android), lalu klik Sambungkan.'
-    : '⚠️ Browser ini tidak mendukung USB Web. Pakai Chrome/Edge di Android (perlu kabel USB-OTG) atau Desktop (tidak didukung di Safari/iOS).';
-  if(actions) actions.innerHTML = '';
-}
-
-function showUsbPortLockedHint(deviceName){
-  const hint = document.getElementById('pos-print-hint');
-  const actions = document.getElementById('pos-print-hint-actions');
-  if(hint){
-    hint.innerHTML = `⚠️ <b>${deviceName || 'Printer USB'}</b> terdeteksi tapi portnya sedang dipakai driver/aplikasi printer lain `
-      + `di sistem (ini wajar terjadi begitu Windows/HP otomatis memasang driver saat printer dicolok, dan itu mengunci akses `
-      + `langsung dari browser -- bukan bug aplikasi ini). Solusinya: tutup aplikasi print lain lalu coba Sambungkan lagi, ATAU `
-      + `langsung pakai tombol di bawah untuk beralih ke metode Dialog Print Browser (justru memanfaatkan driver yang sudah `
-      + `terpasang itu). Kalau tetap ingin cetak langsung lewat USB tanpa dialog cetak, driver interface printer ini perlu `
-      + `diganti ke WinUSB pakai tool gratis Zadig (zadig.akeo.ie) -- sekali setting per komputer.`;
-  }
-  if(actions){
-    actions.innerHTML = `<button class="btn btn-ghost btn-sm" onclick="switchPrintMethodTo('browser')">🖨️ Pakai Dialog Print Browser</button>`;
-  }
-  showToast('Port USB sedang dipakai driver sistem lain', true);
-}
-
-function switchPrintMethodTo(method){
-  const sel = document.getElementById('pos-print-method');
-  if(!sel) return;
-  sel.value = method;
-  onPrintMethodChange();
-}
-
-async function connectUsbPrinter(){
-  if(!navigator.usb){
-    showToast('Browser ini tidak mendukung USB Web (pakai Chrome/Edge)', true);
-    return;
-  }
-  resetUsbPrintHint();
-  let device;
-  try{
-    device = await navigator.usb.requestDevice({ filters: [] });
-  }catch(err){
-    if(err.name !== 'NotFoundError') showToast('Gagal memilih printer USB: ' + err.message, true);
-    return;
-  }
-  try{
-    await device.open();
-    if(device.configuration === null) await device.selectConfiguration(1);
-    const iface = device.configuration.interfaces.find(i => i.alternates.some(a => a.endpoints.some(e => e.direction==='out')));
-    if(!iface) throw new Error('Tidak menemukan jalur output (endpoint) di perangkat ini -- pastikan ini printer thermal, bukan perangkat USB lain.');
-    const alt = iface.alternates.find(a => a.endpoints.some(e => e.direction==='out'));
-    const endpoint = alt.endpoints.find(e => e.direction==='out');
-
-    try{
-      await device.claimInterface(iface.interfaceNumber);
-    }catch(claimErr){
-      // inilah kasus paling umum: interface sudah dikunci driver bawaan sistem
-      try{ await device.close(); }catch(e){ /* diamkan -- yang penting user diberi tahu & diarahkan ke solusi */ }
-      showUsbPortLockedHint(device.productName);
-      return;
-    }
-
-    usbPrinterDevice = device;
-    usbPrinterEndpoint = endpoint.endpointNumber;
-    showToast(`Terhubung ke ${device.productName || 'printer USB'}`);
-    updatePrinterConnectionUI();
-  }catch(err){
-    showToast('Gagal menyambungkan printer USB: ' + err.message, true);
-  }
-}
-
-// kalau printer dicabut / koneksi USB putus, jangan biarkan status tetap "tersambung" secara keliru
+// Sama seperti event 'gattserverdisconnected' di Bluetooth -- supaya
+// status tersambung otomatis terupdate kalau kabel USB tercabut fisik,
+// bukan baru ketahuan pas mau cetak (dan gagal tanpa penjelasan jelas).
 if(navigator.usb){
-  navigator.usb.addEventListener('disconnect', (event)=>{
-    if(event.device === usbPrinterDevice){
+  navigator.usb.addEventListener('disconnect', (e)=>{
+    if(usbPrinterDevice && e.device === usbPrinterDevice){
       usbPrinterDevice = null;
       usbPrinterEndpoint = null;
       updatePrinterConnectionUI();
@@ -2509,17 +2611,115 @@ if(navigator.usb){
   });
 }
 
+async function connectUsbPrinter(){
+  if(!navigator.usb){
+    showToast('Browser ini tidak mendukung USB Web (pakai Chrome/Edge)', true);
+    return;
+  }
+  try{
+    let device = null;
+
+    // Sama seperti Bluetooth: coba sambung ULANG OTOMATIS ke printer USB
+    // yang PERNAH diizinkan dari aplikasi ini sebelumnya, tanpa buka
+    // daftar pilih lagi. Ini menolong kasus printer thermal yang portnya
+    // sudah "diambil alih" driver printer sistem (Windows/Android) --
+    // perangkat itu kadang tidak lagi muncul di daftar pilih WebUSB yang
+    // baru dibuka, padahal browser sebenarnya masih punya izin akses ke
+    // perangkat itu dari sesi sebelumnya. getDevices() mengambil dari
+    // izin yang sudah pernah diberikan, tidak perlu muncul di list lagi.
+    if(navigator.usb.getDevices){
+      try{
+        const known = await navigator.usb.getDevices();
+        if(known && known.length){
+          let saved = null;
+          try{ saved = JSON.parse(localStorage.getItem(USB_PRINTER_LAST_KEY) || 'null'); }catch(e){ /* abaikan */ }
+          device = (saved && known.find(d =>
+            d.vendorId === saved.vendorId && d.productId === saved.productId &&
+            (!saved.serialNumber || d.serialNumber === saved.serialNumber)
+          )) || known[known.length-1];
+        }
+      }catch(e){ /* API belum didukung penuh di browser ini -- lanjut ke cara biasa */ }
+    }
+
+    // Belum pernah ada izin sebelumnya (pertama kali) -> buka daftar
+    // pilih seperti biasa. Printer HANYA akan muncul di sini kalau
+    // memang sedang terpasang & terdeteksi OS lewat kabel/USB-OTG.
+    if(!device){
+      device = await navigator.usb.requestDevice({ filters: [] });
+    }
+
+    await device.open();
+    if(device.configuration === null) await device.selectConfiguration(1);
+
+    // Coba SEMUA interface yang punya jalur output (bukan cuma interface
+    // pertama yang ditemukan). Ini penting karena sebagian printer USB
+    // menyediakan lebih dari satu interface: satu interface "USB Printer
+    // Class" yang begitu dicolok LANGSUNG diklaim otomatis oleh driver
+    // bawaan sistem (Windows "USB Printing Support"/driver printer) --
+    // sehingga browser gagal claimInterface ke situ -- dan satu lagi
+    // interface vendor-specific yang sebenarnya masih bisa diakses
+    // langsung dari browser. Kalau langsung menyerah di percobaan
+    // pertama, printer yang sebenarnya masih bisa dipakai jadi
+    // dianggap gagal total.
+    const candidates = device.configuration.interfaces.filter(
+      i => i.alternates.some(a => a.endpoints.some(e => e.direction==='out'))
+    );
+    if(!candidates.length) throw new Error('Tidak menemukan jalur output di perangkat ini');
+
+    let claimedIface = null, claimErr = null;
+    for(const iface of candidates){
+      try{
+        await device.claimInterface(iface.interfaceNumber);
+        claimedIface = iface;
+        break;
+      }catch(e){ claimErr = e; /* interface ini terkunci driver lain -- coba interface berikutnya */ }
+    }
+    if(!claimedIface){
+      const portLockedErr = new Error('PORT_LOCKED');
+      portLockedErr.original = claimErr;
+      throw portLockedErr;
+    }
+    const alt = claimedIface.alternates.find(a => a.endpoints.some(e => e.direction==='out'));
+    const endpoint = alt.endpoints.find(e => e.direction==='out');
+
+    usbPrinterDevice = device;
+    usbPrinterEndpoint = endpoint.endpointNumber;
+    try{
+      localStorage.setItem(USB_PRINTER_LAST_KEY, JSON.stringify({
+        vendorId: device.vendorId, productId: device.productId, serialNumber: device.serialNumber || null
+      }));
+    }catch(e){ /* opsional */ }
+    showToast(`Terhubung ke ${device.productName || 'printer USB'}`);
+    updatePrinterConnectionUI();
+  }catch(err){
+    if(err.name === 'NotFoundError'){
+      // Chooser tertutup tanpa memilih apa pun -- ini juga yang terjadi
+      // kalau printernya memang tidak muncul sama sekali di daftar.
+      const msg = 'Printer tidak muncul di daftar? Cek: (1) pakai kabel data, bukan kabel isi-daya saja, (2) di HP Android perlu adaptor USB-OTG + izinkan akses USB saat muncul pop-up sistem, (3) kalau driver printer sudah terpasang di komputer, port USB-nya bisa "dikunci" driver itu sehingga tidak kelihatan oleh browser. Kalau printer sudah terdaftar sebagai printer sistem, pakai tombol di bawah untuk beralih ke metode Dialog Print Browser.';
+      showToast(msg, true);
+      setPrintHintPersistent(msg);
+      showPrintFallbackButton('browser', 'Pakai Dialog Print Browser');
+    } else if(err.message === 'PORT_LOCKED' || err.name === 'SecurityError' || /claim/i.test(err.message||'')){
+      // Ini pola error paling umum untuk printer USB thermal murah di
+      // Windows: begitu dicolok, sistem OTOMATIS memasang driver printer
+      // yang mengklaim/mengunci interface-nya secara eksklusif -- akibatnya
+      // browser TIDAK BISA mengambil alih akses langsung ke situ sama
+      // sekali (ini keterbatasan browser/OS, bukan bug aplikasi). Solusi
+      // realistisnya justru MEMANFAATKAN driver yang sudah terpasang itu
+      // lewat metode Dialog Print Browser, bukan memaksa akses mentah.
+      const msg = 'Printer USB terdeteksi tapi portnya sedang dipakai driver/aplikasi printer lain di sistem (ini wajar terjadi begitu Windows/HP otomatis memasang driver saat printer dicolok, dan itu mengunci akses langsung dari browser -- bukan bug aplikasi ini). Solusinya: tutup aplikasi print lain lalu coba lagi, ATAU langsung pakai tombol di bawah untuk beralih ke metode Dialog Print Browser (justru memanfaatkan driver yang sudah terpasang itu).';
+      showToast(msg, true);
+      setPrintHintPersistent(msg);
+      showPrintFallbackButton('browser', 'Pakai Dialog Print Browser');
+    } else {
+      showToast('Gagal menyambungkan printer USB: ' + err.message, true);
+    }
+  }
+}
+
 async function sendToUsbPrinter(bytes){
   if(!usbPrinterDevice) throw new Error('Printer USB belum tersambung');
-  try{
-    await usbPrinterDevice.transferOut(usbPrinterEndpoint, bytes);
-  }catch(err){
-    // transferOut bisa gagal kalau printer dicabut/mati di tengah cetak setelah sebelumnya tersambung
-    usbPrinterDevice = null;
-    usbPrinterEndpoint = null;
-    updatePrinterConnectionUI();
-    throw new Error('Koneksi ke printer USB terputus saat mencetak -- sambungkan ulang lalu coba cetak lagi.');
-  }
+  await usbPrinterDevice.transferOut(usbPrinterEndpoint, bytes);
 }
 
 async function loadPosSummary(){
