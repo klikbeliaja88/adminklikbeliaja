@@ -652,22 +652,24 @@
         <div class="field"><label>Satuan</label><input type="text" id="p-unit" placeholder="1 pack"></div>
       </div>
       <div class="field-row">
-        <div class="field"><label>Harga Jual (Rp)</label><input type="number" id="p-price"></div>
+        <div class="field"><label>Harga Beli / HPP (Rp)</label><input type="number" id="p-purchase" value="0" oninput="onHppOrMarginChange()"></div>
+        <div class="field"><label>Margin Untung (%)</label><input type="number" id="p-margin" placeholder="Contoh: 20" step="0.1" oninput="onHppOrMarginChange()"></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>Harga Jual (Rp)</label><input type="number" id="p-price" oninput="onSellPriceChange()"></div>
         <div class="field"><label>Diskon (Rp, opsional)</label><input type="number" id="p-discount" value="0"></div>
       </div>
+      <p id="p-profit-info" style="font-size:12px; color:var(--ink-soft); margin:-8px 0 6px; padding:8px 10px; background:var(--paper); border-radius:8px;">Isi Harga Beli/HPP lalu Margin Untung (%) untuk otomatis menghitung Harga Jual -- atau isi Harga Jual langsung untuk melihat berapa persen marginnya.</p>
       <div class="field-row">
-        <div class="field"><label>Harga Beli (Rp)</label><input type="number" id="p-purchase" value="0"></div>
         <div class="field"><label>Stok</label><input type="number" id="p-stock" value="0"></div>
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>Barcode / SKU (untuk scan)</label>
-          <div style="display:flex; gap:6px;">
-            <input type="text" id="p-barcode" placeholder="Scan atau ketik manual" style="flex:1;">
-            <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;" onclick="scanBarcodeForProduct()" title="Scan barcode pakai kamera HP">📷 Scan</button>
-          </div>
-        </div>
         <div class="field"><label>Stok Minimum (peringatan menipis)</label><input type="number" id="p-min-stock" value="5" min="0"></div>
+      </div>
+      <div class="field">
+        <label>Barcode / SKU (untuk scan)</label>
+        <div style="display:flex; gap:6px;">
+          <input type="text" id="p-barcode" placeholder="Scan atau ketik manual" style="flex:1;">
+          <button type="button" class="btn btn-ghost btn-sm" style="flex-shrink:0;" onclick="scanBarcodeForProduct()" title="Scan barcode pakai kamera HP">📷 Scan</button>
+        </div>
       </div>
       <p style="font-size:11.5px; color:var(--ink-soft); margin-top:-8px;">💡 Klik tombol "📷 Scan" untuk scan pakai kamera HP, atau klik ke kolom Barcode lalu scan pakai alat barcode scanner (USB/Bluetooth) — kode otomatis terisi.</p>
       <div class="field">
@@ -1086,6 +1088,61 @@ function renderProdukTable(){
   }).join('');
 }
 
+/* ============================================================
+   HPP (HARGA BELI) & MARGIN UNTUNG (%) -- Tambah/Edit Produk
+   ============================================================
+   Tiga kolom saling terhubung: Harga Beli/HPP, Margin Untung (%), dan
+   Harga Jual. Isi salah satu jalur:
+   - Isi Harga Beli + Margin (%)  -> Harga Jual dihitung otomatis.
+   - Isi Harga Beli + Harga Jual manual -> Margin (%) & keuntungan
+     dihitung & ditampilkan otomatis (kolom Margin ikut disesuaikan).
+   Rumus: Harga Jual = Harga Beli x (1 + Margin/100)
+          Margin (%)  = (Harga Jual - Harga Beli) / Harga Beli x 100
+   ============================================================ */
+function onHppOrMarginChange(){
+  const purchaseEl = document.getElementById('p-purchase');
+  const marginEl = document.getElementById('p-margin');
+  const purchase = parseFloat(purchaseEl.value) || 0;
+  const margin = parseFloat(marginEl.value);
+  // Hanya hitungkan Harga Jual kalau Harga Beli & Margin-nya sama-sama
+  // sudah diisi -- kalau Margin dikosongkan, biarkan Harga Jual apa
+  // adanya (mungkin user memang mau isi manual tanpa acuan margin).
+  if(purchase > 0 && marginEl.value.trim() !== '' && !isNaN(margin)){
+    const sell = Math.round(purchase * (1 + margin/100));
+    document.getElementById('p-price').value = sell;
+  }
+  updateProfitInfo(false);
+}
+
+function onSellPriceChange(){
+  updateProfitInfo(true);
+}
+
+function updateProfitInfo(syncMarginField){
+  const purchase = parseFloat(document.getElementById('p-purchase').value) || 0;
+  const price = parseFloat(document.getElementById('p-price').value) || 0;
+  const marginEl = document.getElementById('p-margin');
+  const info = document.getElementById('p-profit-info');
+  if(purchase <= 0 || price <= 0){
+    info.textContent = 'Isi Harga Beli/HPP lalu Margin Untung (%) untuk otomatis menghitung Harga Jual -- atau isi Harga Jual langsung untuk melihat berapa persen marginnya.';
+    info.style.color = 'var(--ink-soft)';
+    return;
+  }
+  const profit = price - purchase;
+  const marginPct = (profit / purchase) * 100;
+  if(syncMarginField){
+    marginEl.value = Math.round(marginPct * 10) / 10;
+  }
+  const rupiah = n => 'Rp' + Math.abs(Math.round(n)).toLocaleString('id-ID');
+  if(profit < 0){
+    info.innerHTML = `⚠️ Harga Jual LEBIH RENDAH dari Harga Beli -- rugi ${rupiah(profit)} per unit (${marginPct.toFixed(1)}%).`;
+    info.style.color = '#b91c1c';
+  } else {
+    info.innerHTML = `Keuntungan per unit: <b>${rupiah(profit)}</b> (margin <b>${marginPct.toFixed(1)}%</b> dari Harga Beli/HPP)`;
+    info.style.color = 'var(--ink-soft)';
+  }
+}
+
 function openProductModal(p){
   document.getElementById('produk-modal-title').textContent = p ? 'Edit Produk' : 'Tambah Produk';
   document.getElementById('p-id').value = p ? p.Product_ID : '';
@@ -1101,6 +1158,11 @@ function openProductModal(p){
   document.getElementById('p-status').value = p ? p.Status : 'ACTIVE';
   document.getElementById('p-image-file').value = '';
   document.getElementById('p-image-status').textContent = 'Unggah foto asli (otomatis dikecilkan & disimpan ke Google Drive), atau isi emoji sebagai alternatif:';
+  // Isi ulang kolom Margin (%) dari Harga Beli & Harga Jual yang ada
+  // (kalau sedang edit produk) supaya konsisten dgn data tersimpan,
+  // lalu tampilkan ringkasan keuntungannya.
+  document.getElementById('p-margin').value = '';
+  updateProfitInfo(true);
 
   const currentImage = p ? (p.Image_URL || '🛒') : '🛒';
   document.getElementById('p-image-value').value = currentImage;
