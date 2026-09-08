@@ -91,6 +91,46 @@
   .mobile-topbar .title{font-weight:800; font-size:14.5px; flex:1; text-align:center; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
   .mobile-topbar .logout-mini{background:rgba(255,255,255,0.15); border:none; color:#fff; font-size:12px; padding:7px 11px; border-radius:8px; font-weight:700; flex-shrink:0;}
 
+  /* ===== NOTIFIKASI PESANAN MASUK (lonceng + panel dropdown) ===== */
+  .notif-bell-btn{position:relative; cursor:pointer; flex-shrink:0;}
+  .notif-badge{
+    position:absolute; top:-4px; right:-4px; background:#dc2626; color:#fff; font-size:10px;
+    font-weight:800; min-width:16px; height:16px; border-radius:8px; display:none;
+    align-items:center; justify-content:center; padding:0 3px; line-height:1; border:1.5px solid #fff;
+  }
+  .mobile-topbar .notif-bell-btn{background:rgba(255,255,255,0.15); border:none; color:#fff; font-size:16px; padding:7px 9px; border-radius:8px;}
+  .notif-bell-desktop{
+    background:rgba(255,255,255,0.14); border:none; color:#fff; font-size:16px; padding:7px 10px;
+    border-radius:9px; flex-shrink:0; margin-top:1px;
+  }
+  .notif-bell-desktop:hover{background:rgba(255,255,255,0.22);}
+  @media(max-width:1100px){ .notif-bell-desktop{display:none;} }
+  .notif-panel{
+    position:fixed; top:64px; right:16px; width:330px; max-width:calc(100vw - 24px); max-height:72vh;
+    overflow-y:auto; background:#fff; border:1.5px solid var(--line); border-radius:14px;
+    box-shadow:var(--shadow); z-index:170; display:none;
+  }
+  /* Di desktop lonceng ada di pojok kiri-atas (dalam sidebar), jadi
+     panelnya juga dibuka di dekat situ -- bukan pojok kanan seperti
+     versi mobile (yg lonceng-nya ada di topbar kanan-atas). */
+  @media(min-width:1101px){
+    .notif-panel{ top:78px; left:16px; right:auto; }
+  }
+  .notif-panel-head{
+    display:flex; align-items:center; justify-content:space-between; gap:8px; padding:12px 14px;
+    border-bottom:1px solid var(--line); position:sticky; top:0; background:#fff; border-radius:14px 14px 0 0;
+  }
+  .notif-panel-head b{font-size:13.5px;}
+  .notif-clear-btn{background:none; border:none; color:var(--green-dark); font-size:11.5px; font-weight:700; cursor:pointer; padding:4px;}
+  .notif-item{
+    display:block; width:100%; text-align:left; padding:11px 14px; border:none; border-bottom:1px solid var(--line);
+    background:none; cursor:pointer; font-family:inherit;
+  }
+  .notif-item:last-child{border-bottom:none;}
+  .notif-item:hover{background:var(--paper);}
+  .notif-empty{padding:26px 14px; text-align:center; color:var(--ink-soft); font-size:12.5px;}
+  .btn:disabled{opacity:.45; cursor:not-allowed;}
+
   main{padding:26px 32px 60px; overflow-x:hidden;}
   .page-head{display:flex; justify-content:space-between; align-items:center; margin-bottom:22px; flex-wrap:wrap; gap:10px;}
   .page-head h2{font-size:22px;}
@@ -253,12 +293,23 @@
   <div class="mobile-topbar" id="mobile-topbar">
     <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">☰</button>
     <span class="title" id="mobile-topbar-title">Dashboard</span>
+    <button class="notif-bell-btn" id="notif-bell-mobile" onclick="toggleNotifPanel(event)" aria-label="Notifikasi Pesanan">🔔<span class="notif-badge" id="notif-badge-mobile"></span></button>
     <button class="logout-mini" onclick="doLogout()">Keluar</button>
   </div>
+  <div class="notif-panel" id="notif-panel">
+    <div class="notif-panel-head">
+      <b>🔔 Notifikasi Pesanan</b>
+      <button type="button" class="notif-clear-btn" onclick="clearAllNotifications()">Tandai semua dibaca</button>
+    </div>
+    <div id="notif-panel-list"></div>
+  </div>
   <aside class="sidebar" id="sidebar">
-    <div class="sidebar-logo">
-      <div class="n">Klik Beli Aja</div>
-      <div class="t">Admin Panel</div>
+    <div class="sidebar-logo" style="display:flex; align-items:flex-start; justify-content:space-between; gap:8px;">
+      <div>
+        <div class="n">Klik Beli Aja</div>
+        <div class="t">Admin Panel</div>
+      </div>
+      <button class="notif-bell-btn notif-bell-desktop" id="notif-bell-desktop" onclick="toggleNotifPanel(event)" aria-label="Notifikasi Pesanan">🔔<span class="notif-badge" id="notif-badge-desktop"></span></button>
     </div>
     <div class="nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><span class="ic">📊</span> Dashboard</div>
     <div class="nav-item" data-tab="kasir" onclick="switchTab('kasir')"><span class="ic">🧮</span> Kasir (POS)</div>
@@ -405,12 +456,16 @@
         </table>
       </div>
 
-      <div class="page-head"><h2 style="font-size:16px;">Riwayat Pergerakan Stok Terbaru</h2></div>
+      <div class="page-head" style="align-items:center;">
+        <h2 style="font-size:16px;">Riwayat Pergerakan Stok</h2>
+        <select id="inv-log-month" onchange="onStockMovementMonthChange()" style="padding:8px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:12.5px; background:#fff;"></select>
+      </div>
       <div class="panel">
         <table>
           <thead><tr><th>Tanggal</th><th>Produk</th><th>Tipe</th><th>Jumlah</th><th>Referensi</th><th>Catatan</th></tr></thead>
           <tbody id="inventaris-log-table"></tbody>
         </table>
+        <div id="inv-log-pagination" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 6px 4px; font-size:12px; color:var(--ink-soft);"></div>
       </div>
     </section>
 
@@ -932,6 +987,7 @@ async function doLogin(){
 
 function doLogout(){
   adminToken = null;
+  stopOrderPolling();
   document.getElementById('app').classList.remove('active');
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('login-pass').value = '';
@@ -962,9 +1018,216 @@ async function loadAdminData(){
     if(document.getElementById('tab-laporan').style.display !== 'none') renderLaporanTab();
     if(document.getElementById('tab-pengantaran').style.display !== 'none') renderPengantaranTab();
     if(document.getElementById('tab-inventaris').style.display !== 'none') renderInventarisTab();
+    checkForNewOrders();
+    startOrderPolling();
   }catch(err){
     showToast('Gagal memuat data dari server.', true);
   }
+}
+
+/* ============================================================
+   NOTIFIKASI PESANAN MASUK
+   ============================================================
+   Cara kerja: setiap loadAdminData() (termasuk polling berkala di
+   bawah) dibandingkan daftar Order_ID yang sudah pernah "dilihat"
+   (disimpan di localStorage per-HP/browser) dengan daftar order
+   terbaru dari server -- order yang belum pernah dilihat dianggap
+   "pesanan baru" dan memicu notifikasi (lonceng + suara + toast +
+   notifikasi sistem browser kalau tab sedang tidak aktif/minimized).
+   Pertama kali dibuka di HP/browser tertentu TIDAK menganggap semua
+   order yang sudah ada sebagai "baru" -- hanya dijadikan titik awal. */
+let seenOrderIds = null;   // null = belum diinisialisasi sesi ini
+let unreadOrders = [];     // daftar order yg badge-nya masih tampil (belum dibuka admin)
+let orderPollingTimer = null;
+const SEEN_ORDERS_KEY = 'kba_admin_seen_order_ids';
+const UNREAD_ORDERS_KEY = 'kba_admin_unread_orders';
+const ORDER_POLL_INTERVAL_MS = 45000; // cek pesanan baru tiap 45 detik
+
+function loadSeenOrderIds(){
+  try{
+    const raw = localStorage.getItem(SEEN_ORDERS_KEY);
+    return raw ? new Set(JSON.parse(raw)) : new Set();
+  }catch(e){ return new Set(); }
+}
+function saveSeenOrderIds(){
+  try{ localStorage.setItem(SEEN_ORDERS_KEY, JSON.stringify([...seenOrderIds])); }catch(e){ /* opsional */ }
+}
+function loadUnreadOrders(){
+  try{ return JSON.parse(localStorage.getItem(UNREAD_ORDERS_KEY) || '[]'); }catch(e){ return []; }
+}
+function saveUnreadOrders(){
+  try{ localStorage.setItem(UNREAD_ORDERS_KEY, JSON.stringify(unreadOrders)); }catch(e){ /* opsional */ }
+}
+
+function checkForNewOrders(){
+  if(!DATA || !Array.isArray(DATA.orders)) return;
+  const currentIds = new Set(DATA.orders.map(o=>o.Order_ID));
+
+  if(seenOrderIds === null){
+    seenOrderIds = loadSeenOrderIds();
+    unreadOrders = loadUnreadOrders().filter(o => currentIds.has(o.Order_ID));
+    if(seenOrderIds.size === 0){
+      // Pertama kali dibuka di HP/browser ini -- jadikan semua order yg
+      // SUDAH ADA sekarang sbg baseline, JANGAN dianggap "baru" semua.
+      seenOrderIds = currentIds;
+      saveSeenOrderIds();
+      renderNotifBell();
+      return;
+    }
+  }
+
+  const newOnes = DATA.orders.filter(o => !seenOrderIds.has(o.Order_ID));
+  if(newOnes.length){
+    newOnes.forEach(o=>{
+      seenOrderIds.add(o.Order_ID);
+      unreadOrders.unshift({ Order_ID:o.Order_ID, Customer_Name:o.Customer_Name, Grand_Total:o.Grand_Total, Order_Date:o.Order_Date });
+    });
+    unreadOrders = unreadOrders.slice(0, 30); // cukup simpan 30 notifikasi terakhir
+    saveSeenOrderIds();
+    saveUnreadOrders();
+    notifyNewOrders(newOnes);
+  }
+  renderNotifBell();
+}
+
+function notifyNewOrders(newOnes){
+  playNotifSound();
+  const msg = newOnes.length === 1
+    ? `🛒 Pesanan baru masuk: ${newOnes[0].Order_ID} — ${newOnes[0].Customer_Name}`
+    : `🛒 ${newOnes.length} pesanan baru masuk!`;
+  showToast(msg);
+  if('Notification' in window && Notification.permission === 'granted' && document.hidden){
+    try{
+      const n = new Notification('Pesanan Baru — Klik Beli Aja', {
+        body: newOnes.length === 1
+          ? `${newOnes[0].Order_ID} dari ${newOnes[0].Customer_Name} — ${rupiah(newOnes[0].Grand_Total||0)}`
+          : `${newOnes.length} pesanan baru menunggu diproses`,
+      });
+      n.onclick = () => { window.focus(); n.close(); };
+    }catch(e){ /* opsional, abaikan kalau gagal */ }
+  }
+}
+
+// Bunyi notifikasi 2-nada sederhana pakai Web Audio API -- tidak perlu
+// file suara terpisah. Browser BISA memblokir audio otomatis sebelum
+// ada interaksi apa pun dari pengguna di halaman ini (kebijakan wajar
+// semua browser) -- begitu admin klik apa saja sekali, notifikasi
+// berikutnya di sesi yang sama akan berbunyi normal.
+function playNotifSound(){
+  try{
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if(!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    [[0, 880], [0.16, 1046.5]].forEach(([delay, freq])=>{
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      gain.gain.setValueAtTime(0.0001, now+delay);
+      gain.gain.exponentialRampToValueAtTime(0.22, now+delay+0.02);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now+delay+0.22);
+      osc.connect(gain).connect(ctx.destination);
+      osc.start(now+delay);
+      osc.stop(now+delay+0.25);
+    });
+    setTimeout(()=>{ try{ ctx.close(); }catch(e){} }, 600);
+  }catch(e){ /* abaikan kalau browser blokir audio */ }
+}
+
+function renderNotifBell(){
+  const count = unreadOrders.length;
+  ['notif-badge-mobile','notif-badge-desktop'].forEach(id=>{
+    const el = document.getElementById(id);
+    if(!el) return;
+    if(count > 0){ el.textContent = count > 9 ? '9+' : String(count); el.style.display = 'flex'; }
+    else { el.style.display = 'none'; }
+  });
+  renderNotifPanelList();
+}
+
+function renderNotifPanelList(){
+  const listEl = document.getElementById('notif-panel-list');
+  if(!listEl) return;
+  if(!unreadOrders.length){
+    listEl.innerHTML = '<div class="notif-empty">Belum ada notifikasi pesanan baru.</div>';
+    return;
+  }
+  listEl.innerHTML = unreadOrders.map(o => `
+    <button type="button" class="notif-item" onclick="openNotifOrder('${o.Order_ID}')">
+      <div class="cell-strong" style="font-size:13px;">🛒 Pesanan Baru: ${o.Order_ID}</div>
+      <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${o.Customer_Name || 'Pelanggan'} — ${rupiah(o.Grand_Total||0)}</div>
+      <div style="font-size:10.5px; color:var(--ink-soft); margin-top:2px;">${formatNotifTime(o.Order_Date)}</div>
+    </button>
+  `).join('');
+}
+
+function formatNotifTime(dateStr){
+  try{
+    const d = new Date(dateStr);
+    if(isNaN(d.getTime())) return '';
+    return d.toLocaleString('id-ID', { day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' });
+  }catch(e){ return ''; }
+}
+
+function toggleNotifPanel(e){
+  if(e) e.stopPropagation();
+  const panel = document.getElementById('notif-panel');
+  const willOpen = panel.style.display !== 'block';
+  panel.style.display = willOpen ? 'block' : 'none';
+  // Minta izin notifikasi sistem browser saat pertama kali dibuka
+  // (bukan langsung saat halaman dimuat, supaya tidak mengganggu) --
+  // kalau diizinkan, admin tetap dapat notifikasi walau tab diminimize.
+  if(willOpen && 'Notification' in window && Notification.permission === 'default'){
+    Notification.requestPermission();
+  }
+}
+
+document.addEventListener('click', (e)=>{
+  const panel = document.getElementById('notif-panel');
+  if(!panel || panel.style.display !== 'block') return;
+  if(e.target.closest('.notif-bell-btn') || e.target.closest('#notif-panel')) return;
+  panel.style.display = 'none';
+});
+
+function openNotifOrder(orderId){
+  document.getElementById('notif-panel').style.display = 'none';
+  unreadOrders = unreadOrders.filter(o => o.Order_ID !== orderId);
+  saveUnreadOrders();
+  renderNotifBell();
+  switchTab('pesanan');
+  setTimeout(()=> openOrderDetail(orderId), 150);
+}
+
+function clearAllNotifications(){
+  unreadOrders = [];
+  saveUnreadOrders();
+  renderNotifBell();
+}
+
+// Cek pesanan baru secara berkala (polling) selama admin sedang login,
+// supaya notifikasi tetap muncul walau admin tidak pindah-pindah menu.
+// Timer lama dibersihkan dulu supaya tidak numpuk kalau loadAdminData()
+// dipanggil ulang (mis. setelah aksi simpan produk dll).
+function startOrderPolling(){
+  if(orderPollingTimer) clearInterval(orderPollingTimer);
+  orderPollingTimer = setInterval(async ()=>{
+    if(!adminToken) return; // sudah logout -- jangan polling lagi
+    try{
+      const res = await fetch(CONFIG.API_URL + '?action=adminBootstrap&token=' + encodeURIComponent(adminToken));
+      const data = await res.json();
+      if(!data.success) return; // token invalid dll -- diam saja, biar aksi manual berikutnya yg menangani logout
+      DATA = data;
+      checkForNewOrders();
+      // Refresh tampilan tabel pesanan & dashboard kalau sedang dibuka,
+      // supaya datanya tetap sinkron tanpa perlu reload manual.
+      renderDashboard();
+      if(document.getElementById('tab-pesanan').style.display !== 'none') renderPesananTable();
+    }catch(e){ /* koneksi sempat gagal -- coba lagi di interval berikutnya */ }
+  }, ORDER_POLL_INTERVAL_MS);
+}
+function stopOrderPolling(){
+  if(orderPollingTimer){ clearInterval(orderPollingTimer); orderPollingTimer = null; }
 }
 
 /* ============================================================
@@ -1393,6 +1656,18 @@ function renderInventarisTab(){
   loadStockMovements();
 }
 
+/* ============================================================
+   RIWAYAT PERGERAKAN STOK -- per bulan & berhalaman (pagination)
+   ============================================================
+   Sebelumnya daftar ini menampilkan s/d 60 baris sekaligus memanjang
+   ke bawah tanpa filter. Sekarang: default ke BULAN BERJALAN, bisa
+   pindah ke bulan lain lewat dropdown, dan datanya dipecah per
+   halaman (15 baris/halaman) supaya rapi & ringan di-scroll. */
+let stockMovementsAll = [];
+let stockMovementsPage = 1;
+const STOCK_MOVEMENTS_PER_PAGE = 15;
+const MONTH_NAMES_ID = ['Januari','Februari','Maret','April','Mei','Juni','Juli','Agustus','September','Oktober','November','Desember'];
+
 async function loadStockMovements(){
   const tbody = document.getElementById('inventaris-log-table');
   if(!CONFIG.API_URL) return;
@@ -1400,27 +1675,91 @@ async function loadStockMovements(){
     const res = await fetch(CONFIG.API_URL + '?action=adminStockMovements&token=' + encodeURIComponent(adminToken));
     const data = await res.json();
     if(!data.success){ return; }
-    const rows = data.movements || [];
-    if(rows.length===0){
-      tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Belum ada riwayat pergerakan stok.</td></tr>`;
-      return;
-    }
-    const typeTag = t => t==='IN' ? '<span class="tag green">Masuk</span>' : t==='OUT' ? '<span class="tag red">Keluar</span>' : '<span class="tag amber">Koreksi</span>';
-    tbody.innerHTML = rows.slice(0, 60).map(m=>{
-      const p = DATA.products.find(x=>x.Product_ID===m.Product_ID);
-      const dateStr = m.Date ? new Date(m.Date).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
-      return `
-        <tr>
-          <td class="cell-muted">${dateStr}</td>
-          <td>${p ? p.Product_Name : m.Product_ID}</td>
-          <td>${typeTag(m.Type)}</td>
-          <td class="cell-strong">${m.Type==='OUT' ? '-' : '+'}${m.Qty}</td>
-          <td class="cell-muted">${m.Reference||'-'}</td>
-          <td class="cell-muted">${m.Note||'-'}</td>
-        </tr>
-      `;
-    }).join('');
+    stockMovementsAll = (data.movements || []).slice().sort((a,b)=> new Date(b.Date) - new Date(a.Date));
+    populateStockMovementMonthOptions();
+    stockMovementsPage = 1;
+    renderStockMovementsPage();
   }catch(err){ /* diamkan -- riwayat opsional, tidak kritikal */ }
+}
+
+function monthKeyOf(dateStr){
+  const d = new Date(dateStr);
+  if(isNaN(d.getTime())) return null;
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0');
+}
+function currentMonthKey(){
+  const now = new Date();
+  return now.getFullYear() + '-' + String(now.getMonth()+1).padStart(2,'0');
+}
+function monthLabelOf(key){
+  const [y,m] = key.split('-').map(Number);
+  return `${MONTH_NAMES_ID[m-1]} ${y}`;
+}
+
+function populateStockMovementMonthOptions(){
+  const sel = document.getElementById('inv-log-month');
+  const currentKey = currentMonthKey();
+  const keysInData = new Set(stockMovementsAll.map(m=>monthKeyOf(m.Date)).filter(Boolean));
+  keysInData.add(currentKey); // bulan berjalan selalu tersedia sbg opsi walau belum ada datanya
+  const keys = [...keysInData].sort().reverse(); // terbaru dulu
+  const prevSelected = sel.value;
+  sel.innerHTML = keys.map(k=>`<option value="${k}">${monthLabelOf(k)}${k===currentKey ? ' (Bulan Ini)' : ''}</option>`).join('');
+  sel.value = keys.includes(prevSelected) ? prevSelected : currentKey;
+}
+
+function onStockMovementMonthChange(){
+  stockMovementsPage = 1;
+  renderStockMovementsPage();
+}
+
+function renderStockMovementsPage(){
+  const tbody = document.getElementById('inventaris-log-table');
+  const pagerEl = document.getElementById('inv-log-pagination');
+  const monthSel = document.getElementById('inv-log-month');
+  const selectedMonth = monthSel.value || currentMonthKey();
+  const filtered = stockMovementsAll.filter(m => monthKeyOf(m.Date) === selectedMonth);
+
+  if(filtered.length === 0){
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Belum ada riwayat pergerakan stok di bulan ${monthLabelOf(selectedMonth)}.</td></tr>`;
+    pagerEl.innerHTML = '';
+    return;
+  }
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / STOCK_MOVEMENTS_PER_PAGE));
+  if(stockMovementsPage > totalPages) stockMovementsPage = totalPages;
+  if(stockMovementsPage < 1) stockMovementsPage = 1;
+  const start = (stockMovementsPage-1) * STOCK_MOVEMENTS_PER_PAGE;
+  const pageRows = filtered.slice(start, start + STOCK_MOVEMENTS_PER_PAGE);
+
+  const typeTag = t => t==='IN' ? '<span class="tag green">Masuk</span>' : t==='OUT' ? '<span class="tag red">Keluar</span>' : '<span class="tag amber">Koreksi</span>';
+  tbody.innerHTML = pageRows.map(m=>{
+    const p = DATA.products.find(x=>x.Product_ID===m.Product_ID);
+    const dateStr = m.Date ? new Date(m.Date).toLocaleString('id-ID', {day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '-';
+    return `
+      <tr>
+        <td class="cell-muted">${dateStr}</td>
+        <td>${p ? p.Product_Name : m.Product_ID}</td>
+        <td>${typeTag(m.Type)}</td>
+        <td class="cell-strong">${m.Type==='OUT' ? '-' : '+'}${m.Qty}</td>
+        <td class="cell-muted">${m.Reference||'-'}</td>
+        <td class="cell-muted">${m.Note||'-'}</td>
+      </tr>
+    `;
+  }).join('');
+
+  pagerEl.innerHTML = `
+    <span>Menampilkan ${start+1}–${Math.min(start+pageRows.length, filtered.length)} dari ${filtered.length} pergerakan</span>
+    <span style="display:flex; gap:6px; align-items:center;">
+      <button type="button" class="btn btn-ghost btn-sm" ${stockMovementsPage<=1?'disabled':''} onclick="changeStockMovementsPage(-1)">‹ Sebelumnya</button>
+      <span>Hal ${stockMovementsPage}/${totalPages}</span>
+      <button type="button" class="btn btn-ghost btn-sm" ${stockMovementsPage>=totalPages?'disabled':''} onclick="changeStockMovementsPage(1)">Berikutnya ›</button>
+    </span>
+  `;
+}
+
+function changeStockMovementsPage(delta){
+  stockMovementsPage += delta;
+  renderStockMovementsPage();
 }
 
 function openRestockModal(productId){
