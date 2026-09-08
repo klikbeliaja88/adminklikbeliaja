@@ -1455,17 +1455,48 @@ document.addEventListener('keydown', (e)=>{
    Pakai library "html5-qrcode" (dimuat lewat CDN di <head>) yang
    mendukung baik format QR maupun barcode 1D umum (EAN-13, EAN-8,
    UPC-A, Code128, dll) sekaligus, jadi cocok untuk barcode kemasan
-   produk toko pada umumnya. */
+   produk toko pada umumnya.
+
+   CATATAN PENTING soal kamera HP -- ini beberapa penyebab paling umum
+   kalau kamera "tidak jalan" khusus di HP (padahal di komputer normal),
+   sudah ditangani di bawah:
+   1. Sebagian HP dgn banyak kamera belakang (wide/ultra-wide) menolak
+      constraint {facingMode:'environment'} yang terlalu ketat -->
+      di-fallback otomatis ke daftar kamera fisik (Html5Qrcode.getCameras)
+      dan coba kamera terakhir dalam daftar (biasanya kamera utama).
+   2. Kalau link admin dibuka lewat WEBVIEW aplikasi lain (WhatsApp,
+      Instagram, Facebook, dll) -- BUKAN browser Chrome/Safari langsung
+      -- banyak webview semacam itu MEMBLOKIR akses kamera sama sekali.
+      Ini penyebab tersering "kamera tidak jalan di HP" utk web app dan
+      TIDAK bisa diperbaiki lewat kode -- makanya diberi pesan eksplisit
+      supaya pengguna tahu solusinya (buka link di browser asli).
+   3. Pesan error dibedakan per jenis (izin ditolak / kamera dipakai
+      app lain / tidak ada kamera / dll) supaya jelas apa yg harus
+      dilakukan, bukan cuma "gagal" generik. */
 let barcodeScannerInstance = null;
 let barcodeScanCallback = null;
+
+// Semua format yang relevan utk kemasan produk toko (barcode 1D) +
+// QR -- deklarasi eksplisit ini juga mempercepat & memperkuat deteksi
+// dibanding mengandalkan default library (yang mencoba SEMUA format).
+function getBarcodeFormatsToSupport(){
+  if(typeof Html5QrcodeSupportedFormats === 'undefined') return undefined;
+  const F = Html5QrcodeSupportedFormats;
+  return [F.QR_CODE, F.EAN_13, F.EAN_8, F.UPC_A, F.UPC_E, F.UPC_EAN_EXTENSION,
+          F.CODE_128, F.CODE_39, F.CODE_93, F.CODABAR, F.ITF].filter(v => v !== undefined);
+}
 
 function openBarcodeScanner(onDetected){
   if(typeof Html5Qrcode === 'undefined'){
     showToast('Fitur scan kamera gagal dimuat (butuh koneksi internet saat membuka halaman ini). Silakan input manual atau pakai alat barcode scanner.', true);
     return;
   }
-  if(!(window.isSecureContext)){
-    showToast('Scan kamera butuh koneksi HTTPS (atau localhost). Silakan input manual atau pakai alat barcode scanner.', true);
+  if(!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia){
+    showToast('Browser ini tidak mendukung akses kamera. Kalau halaman ini dibuka lewat WhatsApp/Instagram/aplikasi lain (bukan Chrome/Safari langsung), coba ketuk titik tiga (⋮) lalu pilih "Buka di browser".', true);
+    return;
+  }
+  if(!window.isSecureContext){
+    showToast('Scan kamera butuh alamat HTTPS (atau localhost). Silakan input manual atau pakai alat barcode scanner.', true);
     return;
   }
   barcodeScanCallback = onDetected;
@@ -1473,13 +1504,29 @@ function openBarcodeScanner(onDetected){
   statusEl.textContent = 'Meminta izin kamera…';
   openModal('modal-barcode-scan');
 
-  barcodeScannerInstance = new Html5Qrcode('barcode-scanner-viewport');
-  const config = { fps: 10, qrbox: { width: 250, height: 150 } };
+  const formatsToSupport = getBarcodeFormatsToSupport();
+  barcodeScannerInstance = new Html5Qrcode('barcode-scanner-viewport',
+    formatsToSupport ? { formatsToSupport, verbose:false } : undefined);
 
-  // Utamakan kamera belakang (environment) -- lebih cocok untuk scan
-  // barcode fisik dibanding kamera depan.
+  // Beri jeda sepersekian detik sebelum start() supaya modal & elemen
+  // videonya benar-benar sudah punya ukuran final di layar (sebagian HP
+  // butuh 1 frame render dulu sebelum ukuran kontainer akurat).
+  setTimeout(()=>{
+    // Utamakan kamera belakang (environment) -- lebih cocok untuk scan
+    // barcode fisik dibanding kamera depan. Pakai {ideal:...} (bukan
+    // constraint ketat/exact) supaya HP dgn banyak kamera belakang
+    // tidak langsung gagal kalau salah satu constraint tidak persis
+    // cocok -- browser akan pilih kamera environment terdekat yg ada.
+    startBarcodeCamera({ facingMode: { ideal: 'environment' } }, true);
+  }, 60);
+}
+
+function startBarcodeCamera(cameraConfig, allowFallback){
+  const statusEl = document.getElementById('barcode-scan-status');
+  const config = { fps: 10, qrbox: { width: 250, height: 150 }, aspectRatio: 1.0 };
+
   barcodeScannerInstance.start(
-    { facingMode: 'environment' },
+    cameraConfig,
     config,
     (decodedText) => {
       // Berhasil terbaca -- getarkan HP kalau didukung sbg sinyal
@@ -1494,9 +1541,40 @@ function openBarcodeScanner(onDetected){
   ).then(()=>{
     statusEl.textContent = 'Arahkan kamera ke barcode produk…';
   }).catch((err)=>{
-    statusEl.textContent = 'Gagal mengakses kamera.';
-    showToast('Tidak bisa mengakses kamera: pastikan sudah mengizinkan akses kamera untuk situs ini di pengaturan browser/HP.', true);
+    // Constraint {facingMode:...} gagal -- coba lagi dgn cara lain:
+    // enumerasi kamera fisik & pakai kamera TERAKHIR dalam daftar
+    // (di HP kebanyakan kamera belakang utama ada di urutan akhir).
+    if(allowFallback && barcodeScannerInstance && Html5Qrcode.getCameras){
+      Html5Qrcode.getCameras().then(devices=>{
+        if(devices && devices.length){
+          startBarcodeCamera(devices[devices.length-1].id, false);
+        } else {
+          finalizeBarcodeCameraError(err);
+        }
+      }).catch(()=> finalizeBarcodeCameraError(err));
+    } else {
+      finalizeBarcodeCameraError(err);
+    }
   });
+}
+
+function finalizeBarcodeCameraError(err){
+  const statusEl = document.getElementById('barcode-scan-status');
+  statusEl.textContent = 'Gagal mengakses kamera.';
+  const name = err && err.name;
+  let msg;
+  if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
+    msg = 'Akses kamera ditolak. Ketuk ikon 🔒/ⓘ di address bar browser > Izin Situs > izinkan Kamera, lalu coba scan lagi.';
+  } else if(name === 'NotFoundError' || name === 'DevicesNotFoundError'){
+    msg = 'Tidak menemukan kamera di perangkat ini.';
+  } else if(name === 'NotReadableError' || name === 'TrackStartError'){
+    msg = 'Kamera sedang dipakai aplikasi lain (mis. video call). Tutup aplikasi itu dulu lalu coba lagi.';
+  } else if(name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError'){
+    msg = 'Kamera perangkat ini tidak cocok dengan pengaturan yang diminta. Coba tutup & buka lagi fitur scan ini.';
+  } else {
+    msg = 'Tidak bisa mengakses kamera. Kalau halaman ini dibuka lewat WhatsApp/Instagram/aplikasi lain, coba buka link-nya langsung di Chrome/Safari (ketuk titik tiga ⋮ > Buka di browser).';
+  }
+  showToast(msg, true);
 }
 
 function closeBarcodeScanner(){
