@@ -424,6 +424,7 @@
           <thead><tr><th>Produk</th><th>Kategori</th><th>Harga</th><th>Diskon</th><th>Stok</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody id="produk-table"></tbody>
         </table>
+        <div id="produk-pagination" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 6px 4px; font-size:12px; color:var(--ink-soft);"></div>
       </div>
     </section>
 
@@ -454,6 +455,7 @@
           <thead><tr><th>Produk</th><th>Barcode/SKU</th><th>Stok Saat Ini</th><th>Stok Minimum</th><th>Status</th><th>Aksi</th></tr></thead>
           <tbody id="inventaris-table"></tbody>
         </table>
+        <div id="inventaris-pagination" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 6px 4px; font-size:12px; color:var(--ink-soft);"></div>
       </div>
 
       <div class="page-head" style="align-items:center;">
@@ -495,6 +497,7 @@
             <option value="DIPROSES">Diproses</option>
             <option value="DIKIRIM">Dikirim</option>
             <option value="SELESAI">Selesai</option>
+            <option value="DIBATALKAN">Dibatalkan</option>
           </select>
         </div>
       </div>
@@ -503,6 +506,7 @@
           <thead><tr><th>No. Pesanan</th><th>Pelanggan</th><th>Pengantaran</th><th>Total</th><th>Pembayaran</th><th>Status Bayar</th><th>Bukti</th><th>Status Pesanan</th><th>Aksi</th></tr></thead>
           <tbody id="pesanan-table"></tbody>
         </table>
+        <div id="pesanan-pagination" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 6px 4px; font-size:12px; color:var(--ink-soft);"></div>
       </div>
     </section>
 
@@ -558,6 +562,7 @@
           <thead><tr><th>Produk</th><th>Kategori</th><th>Qty Terjual</th><th>Pendapatan</th><th>Kontribusi</th><th>Rating</th></tr></thead>
           <tbody id="lap-table"></tbody>
         </table>
+        <div id="laporan-pagination" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 6px 4px; font-size:12px; color:var(--ink-soft);"></div>
       </div>
     </section>
 
@@ -569,6 +574,7 @@
           <thead><tr><th>Nama</th><th>WhatsApp</th><th>Kota</th><th>Total Order</th><th>Total Belanja</th><th>Order Terakhir</th></tr></thead>
           <tbody id="pelanggan-table"></tbody>
         </table>
+        <div id="pelanggan-pagination" style="display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; padding:14px 6px 4px; font-size:12px; color:var(--ink-soft);"></div>
       </div>
     </section>
 
@@ -843,7 +849,7 @@
     <div class="modal-body" id="pesanan-modal-body"></div>
     <div class="modal-foot">
       <button class="btn btn-ghost" onclick="closeModal('modal-pesanan')">Tutup</button>
-      <button class="btn btn-primary" onclick="saveOrderStatus()">Simpan Status</button>
+      <button class="btn btn-primary" id="pesanan-save-btn" onclick="saveOrderStatus()">Simpan Status</button>
     </div>
   </div>
 </div>
@@ -867,10 +873,13 @@
 <div class="modal-overlay" id="modal-pos-receipt">
   <div class="modal-box" style="max-width:380px;">
     <div class="modal-head"><h3>✓ Transaksi Berhasil</h3><button class="modal-close" onclick="closePosReceiptModal()">✕</button></div>
-    <div class="modal-body" id="pos-receipt-body" style="font-size:13.5px;"></div>
+    <p id="pos-receipt-size-label" style="text-align:center; font-size:11px; color:var(--ink-soft); margin:0; padding-top:10px;"></p>
+    <div class="modal-body" style="display:flex; justify-content:center; padding-top:8px;">
+      <div id="pos-receipt-body" style="background:#fff; box-shadow:0 2px 10px rgba(14,60,35,0.12); padding:8px 0;"></div>
+    </div>
     <div style="padding:0 22px 14px; border-top:1px solid var(--line); margin-top:6px; padding-top:14px;">
       <label style="display:block; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin-bottom:6px;">Ukuran Kertas</label>
-      <select id="pos-print-size" onchange="savePrintSizePref()" style="width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:13px; margin-bottom:12px;">
+      <select id="pos-print-size" onchange="onPrintSizeChange()" style="width:100%; padding:9px 11px; border:1.5px solid var(--line); border-radius:9px; font-size:13px; margin-bottom:12px;">
         <option value="57x37">57 × 37 mm (32 kolom)</option>
         <option value="57x50">57 × 50 mm (32 kolom)</option>
         <option value="58x40">58 × 40 mm (32 kolom)</option>
@@ -899,9 +908,12 @@
         <button class="btn btn-ghost btn-sm" id="pos-print-fallback-btn" style="display:none; margin-top:8px; width:100%;">🔁 Coba metode lain</button>
       </div>
     </div>
-    <div class="modal-foot">
-      <button class="btn btn-ghost" onclick="printPosReceipt()">🖨️ Cetak</button>
-      <button class="btn btn-primary" onclick="closePosReceiptModal()">Transaksi Baru</button>
+    <div class="modal-foot" style="justify-content:space-between;">
+      <button class="btn btn-ghost" id="pos-cancel-sale-btn" style="color:var(--stamp); border-color:var(--stamp);" onclick="voidPosSale()">🗑️ Batalkan Transaksi</button>
+      <span style="display:flex; gap:10px;">
+        <button class="btn btn-ghost" onclick="printPosReceipt()">🖨️ Cetak</button>
+        <button class="btn btn-primary" onclick="closePosReceiptModal()">Transaksi Baru</button>
+      </span>
     </div>
   </div>
 </div>
@@ -1275,7 +1287,7 @@ function closeSidebar(){
 function renderDashboard(){
   document.getElementById('stat-produk').textContent = DATA.products.length;
   document.getElementById('stat-pesanan').textContent = DATA.orders.length;
-  document.getElementById('stat-pending').textContent = DATA.orders.filter(o=>o.Order_Status!=='SELESAI').length;
+  document.getElementById('stat-pending').textContent = DATA.orders.filter(o=>o.Order_Status!=='SELESAI' && o.Order_Status!=='DIBATALKAN').length;
   document.getElementById('stat-pelanggan').textContent = DATA.customers.length;
 
   const recent = DATA.orders.slice(0,8);
@@ -1298,12 +1310,75 @@ function formatDate(d){
 function statusTag(status){
   const map = {
     ACTIVE:['gray','Aktif'], PROMO:['amber','Promo'], BARU:['green','Baru'], TERLARIS:['amber','Terlaris'], INACTIVE:['red','Nonaktif'],
-    DIBUAT:['gray','Dibuat'], DIPROSES:['amber','Diproses'], DIKIRIM:['green','Dikirim'], SELESAI:['green','Selesai'],
+    DIBUAT:['gray','Dibuat'], DIPROSES:['amber','Diproses'], DIKIRIM:['green','Dikirim'], SELESAI:['green','Selesai'], DIBATALKAN:['red','Dibatalkan'],
     LUNAS:['green','Lunas'], BELUM_BAYAR:['red','Belum Bayar'],
     TIDAK_PERLU:['gray','COD'], BELUM_UPLOAD:['red','Belum Upload'], MENUNGGU_VERIFIKASI:['amber','Perlu Cek'], DIVERIFIKASI:['green','Terverifikasi'], DITOLAK:['red','Ditolak'],
   };
   const [cls,label] = map[status] || ['gray', status||'-'];
   return `<span class="tag ${cls}">${label}</span>`;
+}
+
+/* ============================================================
+   PAGINASI TABEL -- dipakai bersama oleh tabel Produk, Inventaris,
+   Pesanan, Laporan Penjualan & Pelanggan supaya daftar yang panjang
+   tidak lagi memanjang terus ke bawah, melainkan dipecah per halaman
+   (rapi & ringan di-scroll), mengikuti pola yang sudah dipakai lebih
+   dulu di Riwayat Pergerakan Stok.
+   ============================================================ */
+const TABLE_PAGE_SIZE = 15;
+let tablePageState = {};     // key tabel -> halaman aktif
+let tablePageFilterSig = {}; // key tabel -> tanda pencarian/filter terakhir (utk deteksi kapan harus balik ke halaman 1)
+
+// Potong `list` sesuai halaman aktif utk tabel `key`. `filterSig` adalah
+// string yang mewakili kombinasi pencarian/filter saat ini -- kalau beda
+// dari render sebelumnya, otomatis balik ke halaman 1 (supaya tidak
+// "nyangkut" di halaman kosong setelah ganti kata kunci/filter).
+function paginateTable(key, list, filterSig){
+  if(tablePageFilterSig[key] !== filterSig){
+    tablePageFilterSig[key] = filterSig;
+    tablePageState[key] = 1;
+  }
+  if(!tablePageState[key]) tablePageState[key] = 1;
+  const totalPages = Math.max(1, Math.ceil(list.length / TABLE_PAGE_SIZE));
+  if(tablePageState[key] > totalPages) tablePageState[key] = totalPages;
+  if(tablePageState[key] < 1) tablePageState[key] = 1;
+  const page = tablePageState[key];
+  const start = (page-1) * TABLE_PAGE_SIZE;
+  const pageItems = list.slice(start, start + TABLE_PAGE_SIZE);
+  return { pageItems, start, page, totalPages, total:list.length };
+}
+
+// Render kontrol "Sebelumnya / Berikutnya" + info "Menampilkan X-Y dari Z".
+function renderTablePager(containerId, key, result){
+  const el = document.getElementById(containerId);
+  if(!el) return;
+  if(result.total === 0){ el.innerHTML = ''; return; }
+  if(result.totalPages <= 1){
+    el.innerHTML = `<span>Menampilkan semua ${result.total} data</span>`;
+    return;
+  }
+  el.innerHTML = `
+    <span>Menampilkan ${result.start+1}–${Math.min(result.start+result.pageItems.length, result.total)} dari ${result.total} data</span>
+    <span style="display:flex; gap:6px; align-items:center;">
+      <button type="button" class="btn btn-ghost btn-sm" ${result.page<=1?'disabled':''} onclick="changeTablePage('${key}',-1)">‹ Sebelumnya</button>
+      <span>Hal ${result.page}/${result.totalPages}</span>
+      <button type="button" class="btn btn-ghost btn-sm" ${result.page>=result.totalPages?'disabled':''} onclick="changeTablePage('${key}',1)">Berikutnya ›</button>
+    </span>
+  `;
+}
+
+// Peta key tabel -> fungsi render-nya, dipakai saat tombol halaman diklik.
+const TABLE_RENDER_FN = {
+  produk: () => renderProdukTable(),
+  inventaris: () => renderInventarisTab(),
+  pesanan: () => renderPesananTable(),
+  laporan: () => renderLaporanTab(),
+  pelanggan: () => renderPelangganTable(),
+};
+function changeTablePage(key, delta){
+  tablePageState[key] = (tablePageState[key]||1) + delta;
+  const fn = TABLE_RENDER_FN[key];
+  if(fn) fn();
 }
 
 /* ============================================================
@@ -1323,9 +1398,14 @@ function renderProdukTable(){
     return matchTerm && matchStatus;
   });
   const tbody = document.getElementById('produk-table');
-  if(list.length===0){ tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tidak ada produk yang cocok.</td></tr>`; return; }
+  if(list.length===0){
+    tbody.innerHTML = `<tr><td colspan="7" class="empty-row">Tidak ada produk yang cocok.</td></tr>`;
+    renderTablePager('produk-pagination', 'produk', {pageItems:[], start:0, page:1, totalPages:1, total:0});
+    return;
+  }
 
-  tbody.innerHTML = list.map(p=>{
+  const paged = paginateTable('produk', list, term+'|'+statusFilter);
+  tbody.innerHTML = paged.pageItems.map(p=>{
     const cat = DATA.categories.find(c=>c.Category_ID===p.Category_ID);
     const thumb = isImageUrlValue(p.Image_URL)
       ? `<img src="${p.Image_URL}" style="width:28px;height:28px;object-fit:cover;border-radius:5px;vertical-align:middle;margin-right:6px;" alt="">`
@@ -1349,6 +1429,7 @@ function renderProdukTable(){
       </tr>
     `;
   }).join('');
+  renderTablePager('produk-pagination', 'produk', paged);
 }
 
 /* ============================================================
@@ -1634,8 +1715,10 @@ function renderInventarisTab(){
   const tbody = document.getElementById('inventaris-table');
   if(list.length===0){
     tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Tidak ada produk yang cocok.</td></tr>`;
+    renderTablePager('inventaris-pagination', 'inventaris', {pageItems:[], start:0, page:1, totalPages:1, total:0});
   } else {
-    tbody.innerHTML = list.map(p=>{
+    const paged = paginateTable('inventaris', list, term+'|'+filter);
+    tbody.innerHTML = paged.pageItems.map(p=>{
       const status = stockStatusOf(p);
       const statusTagHtml = status==='OUT' ? '<span class="tag red">Stok Habis</span>'
         : status==='LOW' ? '<span class="tag amber">Stok Menipis</span>'
@@ -1651,6 +1734,7 @@ function renderInventarisTab(){
         </tr>
       `;
     }).join('');
+    renderTablePager('inventaris-pagination', 'inventaris', paged);
   }
 
   loadStockMovements();
@@ -2099,9 +2183,14 @@ function renderPesananTable(){
     return matchTerm && matchStatus;
   });
   const tbody = document.getElementById('pesanan-table');
-  if(list.length===0){ tbody.innerHTML = `<tr><td colspan="9" class="empty-row">Tidak ada pesanan yang cocok.</td></tr>`; return; }
+  if(list.length===0){
+    tbody.innerHTML = `<tr><td colspan="9" class="empty-row">Tidak ada pesanan yang cocok.</td></tr>`;
+    renderTablePager('pesanan-pagination', 'pesanan', {pageItems:[], start:0, page:1, totalPages:1, total:0});
+    return;
+  }
 
-  tbody.innerHTML = list.map(o=>`
+  const paged = paginateTable('pesanan', list, term+'|'+statusFilter);
+  tbody.innerHTML = paged.pageItems.map(o=>`
     <tr>
       <td class="cell-strong">${o.Order_ID}</td>
       <td>${o.Customer_Name}<br><span class="cell-muted">${o.WhatsApp}</span></td>
@@ -2114,6 +2203,7 @@ function renderPesananTable(){
       <td><button class="icon-action" onclick="openOrderDetail('${o.Order_ID}')">Lihat / Update</button></td>
     </tr>
   `).join('');
+  renderTablePager('pesanan-pagination', 'pesanan', paged);
 }
 
 function deliveryInfoCell(o){
@@ -2198,6 +2288,12 @@ function openOrderDetail(orderId){
       </div>
     </div>
     ${orderProofBlock(order)}
+    ${order.Order_Status==='DIBATALKAN' ? `
+      <div style="margin-top:18px; padding:12px 14px; background:#FDEAEA; border:1.5px solid var(--stamp); border-radius:10px;">
+        <p style="font-size:13px; font-weight:700; color:var(--stamp); margin:0;">❌ Transaksi ini sudah dibatalkan</p>
+        <p style="font-size:12px; color:var(--ink-soft); margin:4px 0 0;">Stok yang sempat terpotong sudah dikembalikan otomatis. Status tidak bisa diubah lagi lewat sini.</p>
+      </div>
+    ` : `
     <div class="field-row" style="margin-top:18px;">
       <div class="field">
         <label>Status Pembayaran</label>
@@ -2216,13 +2312,19 @@ function openOrderDetail(orderId){
         </select>
       </div>
     </div>
+    `}
   `;
+  const saveBtn = document.getElementById('pesanan-save-btn');
+  if(saveBtn) saveBtn.style.display = order.Order_Status==='DIBATALKAN' ? 'none' : 'inline-flex';
   openModal('modal-pesanan');
 }
 
 async function saveOrderStatus(){
-  const orderStatus = document.getElementById('o-order-status').value;
-  const paymentStatus = document.getElementById('o-pay-status').value;
+  const orderStatusEl = document.getElementById('o-order-status');
+  const paymentStatusEl = document.getElementById('o-pay-status');
+  if(!orderStatusEl || !paymentStatusEl) return; // transaksi dibatalkan -- tidak ada field utk diubah
+  const orderStatus = orderStatusEl.value;
+  const paymentStatus = paymentStatusEl.value;
   const order = DATA.orders.find(o=>o.Order_ID===currentOrderId);
 
   // Peringatan lembut (bukan blokir keras) kalau admin memproses pesanan
@@ -2246,7 +2348,9 @@ function renderLaporanTab(){
   const cutoff = new Date();
   cutoff.setDate(cutoff.getDate() - rangeDays);
 
-  const ordersInRange = DATA.orders.filter(o => new Date(o.Order_Date) >= cutoff);
+  // Transaksi yang sudah dibatalkan (lihat fitur "Batalkan Transaksi" di
+  // Kasir POS) tidak dihitung sebagai penjualan supaya laporan tetap akurat.
+  const ordersInRange = DATA.orders.filter(o => new Date(o.Order_Date) >= cutoff && o.Order_Status !== 'DIBATALKAN');
   const orderIdsInRange = new Set(ordersInRange.map(o => o.Order_ID));
   const detailsInRange = DATA.orderDetails.filter(d => orderIdsInRange.has(d.Order_ID));
 
@@ -2297,8 +2401,10 @@ function renderLaporanTab(){
   const tbody = document.getElementById('lap-table');
   if(productList.length===0){
     tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Belum ada data penjualan pada periode ini.</td></tr>`;
+    renderTablePager('laporan-pagination', 'laporan', {pageItems:[], start:0, page:1, totalPages:1, total:0});
   } else {
-    tbody.innerHTML = productList.map(p=>{
+    const paged = paginateTable('laporan', productList, rangeDays+'|'+productList.length);
+    tbody.innerHTML = paged.pageItems.map(p=>{
       const prod = DATA.products.find(x=>x.Product_ID===p.id);
       const cat = prod ? DATA.categories.find(c=>c.Category_ID===prod.Category_ID) : null;
       const contribution = maxRevenue ? Math.round((p.revenue / totalRevenue) * 100) : 0;
@@ -2314,6 +2420,7 @@ function renderLaporanTab(){
         </tr>
       `;
     }).join('');
+    renderTablePager('laporan-pagination', 'laporan', paged);
   }
 }
 
@@ -2563,8 +2670,37 @@ function showPosReceipt(res, payload){
   };
   document.getElementById('pos-receipt-body').innerHTML = renderReceiptPreviewHtml(lastReceipt);
   loadPrintSizePref();
+  applyReceiptPreviewSize();
   onPrintMethodChange();
+  const cancelBtn = document.getElementById('pos-cancel-sale-btn');
+  if(cancelBtn){ cancelBtn.style.display = 'inline-flex'; cancelBtn.disabled = false; }
   openModal('modal-pos-receipt');
+}
+
+// Dipanggil tiap kali dropdown "Ukuran Kertas" diganti -- supaya preview
+// struk di layar (sebelum dicetak) ikut menyesuaikan lebar & ukuran huruf
+// persis sama dengan yang bakal dihasilkan lewat Dialog Print Browser.
+// Jadi tidak ada lagi kejutan "kok pas dicetak beda sama yang di app".
+function onPrintSizeChange(){
+  savePrintSizePref();
+  applyReceiptPreviewSize();
+}
+
+function applyReceiptPreviewSize(){
+  const sizeSel = document.getElementById('pos-print-size');
+  const box = document.getElementById('pos-receipt-body');
+  const label = document.getElementById('pos-receipt-size-label');
+  if(!sizeSel || !box) return;
+  const sizeKey = sizeSel.value;
+  const size = PRINTER_PAPER_SIZES[sizeKey] || PRINTER_PAPER_SIZES['80x140'];
+  // 1mm = 96/25.4 px (skala layar standar) -- dipakai juga saat mengukur
+  // tinggi struk di printReceiptHtml() supaya preview & hasil cetak konsisten.
+  const PX_PER_MM = 96 / 25.4;
+  const widthPx = Math.round(size.w * PX_PER_MM);
+  box.style.width = widthPx + 'px';
+  box.style.padding = '10px ' + Math.round(widthPx*0.045) + 'px';
+  box.style.fontSize = size.font + 'px';
+  if(label) label.textContent = `Pratinjau mengikuti ukuran kertas ${size.w}×${size.h}mm (${size.chars} kolom) -- tampilan ini sama persis dengan hasil Dialog Print Browser`;
 }
 
 // Tampilan struk di layar (dalam modal) -- pakai class, BUKAN ukuran
@@ -2601,6 +2737,34 @@ function renderReceiptPreviewHtml(r){
 
 function closePosReceiptModal(){
   closeModal('modal-pos-receipt');
+}
+
+/* ============================================================
+   BATALKAN TRANSAKSI KASIR -- dipakai kalau kasir SUDAH klik "Proses
+   Pembayaran" (barang & stok sudah tercatat) tapi ternyata pelanggan
+   batal jadi belanja SEBELUM struk sempat dicetak (atau bahkan sesudah,
+   selama modal struk ini masih terbuka). Stok yang sempat terpotong
+   dikembalikan otomatis oleh server (lihat posVoidSale_ di Code.gs).
+   ============================================================ */
+async function voidPosSale(){
+  if(!lastReceipt){ showToast('Tidak ada transaksi untuk dibatalkan', true); return; }
+  const ok = confirm(`Batalkan transaksi ${lastReceipt.orderId}?\n\nStok barang yang sudah terpotong akan otomatis dikembalikan. Tindakan ini tidak bisa diurungkan.`);
+  if(!ok) return;
+
+  const cancelBtn = document.getElementById('pos-cancel-sale-btn');
+  if(cancelBtn) cancelBtn.disabled = true;
+
+  const res = await callApi('posVoidSale', { order_id: lastReceipt.orderId });
+  if(res.success){
+    showToast('Transaksi dibatalkan, stok sudah dikembalikan');
+    lastReceipt = null;
+    closeModal('modal-pos-receipt');
+    loadPosSummary();
+    loadAdminData();
+  } else {
+    showToast(res.error || 'Gagal membatalkan transaksi', true);
+    if(cancelBtn) cancelBtn.disabled = false;
+  }
 }
 
 /* ============================================================
@@ -3217,8 +3381,13 @@ async function loadPosSummary(){
    ============================================================ */
 function renderPelangganTable(){
   const tbody = document.getElementById('pelanggan-table');
-  if(DATA.customers.length===0){ tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Belum ada pelanggan.</td></tr>`; return; }
-  tbody.innerHTML = DATA.customers.map(c=>`
+  if(DATA.customers.length===0){
+    tbody.innerHTML = `<tr><td colspan="6" class="empty-row">Belum ada pelanggan.</td></tr>`;
+    renderTablePager('pelanggan-pagination', 'pelanggan', {pageItems:[], start:0, page:1, totalPages:1, total:0});
+    return;
+  }
+  const paged = paginateTable('pelanggan', DATA.customers, DATA.customers.length);
+  tbody.innerHTML = paged.pageItems.map(c=>`
     <tr>
       <td class="cell-strong">${c.Name}</td>
       <td>${c.WhatsApp}</td>
@@ -3228,6 +3397,7 @@ function renderPelangganTable(){
       <td class="cell-muted">${formatDate(c.Last_Order)}</td>
     </tr>
   `).join('');
+  renderTablePager('pelanggan-pagination', 'pelanggan', paged);
 }
 
 /* ============================================================
