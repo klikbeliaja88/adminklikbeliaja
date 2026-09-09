@@ -1953,12 +1953,22 @@ document.addEventListener('keydown', (e)=>{
    2. Kalau link admin dibuka lewat WEBVIEW aplikasi lain (WhatsApp,
       Instagram, Facebook, dll) -- BUKAN browser Chrome/Safari langsung
       -- banyak webview semacam itu MEMBLOKIR akses kamera sama sekali.
-      Ini penyebab tersering "kamera tidak jalan di HP" utk web app dan
+      Ini salah satu penyebab "kamera tidak jalan di HP" utk web app dan
       TIDAK bisa diperbaiki lewat kode -- makanya diberi pesan eksplisit
       supaya pengguna tahu solusinya (buka link di browser asli).
    3. Pesan error dibedakan per jenis (izin ditolak / kamera dipakai
       app lain / tidak ada kamera / dll) supaya jelas apa yg harus
-      dilakukan, bukan cuma "gagal" generik. */
+      dilakukan, bukan cuma "gagal" generik.
+   4. PENTING: library html5-qrcode kadang membungkus error kamera ASLI
+      jadi STRING biasa lewat Html5QrcodeStrings.errorGettingUserMedia()
+      ("Error getting userMedia, error = <NamaError>: ...") -- BUKAN
+      objek Error/DOMException dgn properti .name. Kalau kode di sini
+      cuma mengecek err.name, itu akan selalu undefined utk kasus ini
+      dan SELALU jatuh ke pesan generik "buka di browser" walau
+      halamannya sudah dibuka di browser asli & sebabnya lain (izin
+      ditolak, kamera dipakai app lain, dll). Makanya finalizeBarcode
+      CameraError() di bawah mengecek juga ISI TEKS errornya, tidak
+      cuma .name. */
 let barcodeScannerInstance = null;
 let barcodeScanCallback = null;
 
@@ -2047,18 +2057,32 @@ function startBarcodeCamera(cameraConfig, allowFallback){
 function finalizeBarcodeCameraError(err){
   const statusEl = document.getElementById('barcode-scan-status');
   statusEl.textContent = 'Gagal mengakses kamera.';
-  const name = err && err.name;
+  // PENTING: library html5-qrcode kadang membungkus error ASLI jadi
+  // STRING biasa (bukan objek Error/DOMException) lewat pesan
+  // "Error getting userMedia, error = <NamaError>: <pesan>" -- jadi
+  // `err.name` saja TIDAK CUKUP (selalu undefined utk kasus ini) dan
+  // dulu selalu jatuh ke pesan generik "buka lewat browser", padahal
+  // halamannya sudah dibuka di browser asli & sebabnya hal lain (izin
+  // ditolak, kamera dipakai app lain, dll). Makanya di sini dicek juga
+  // isi TEKS errornya, tidak cuma properti .name.
+  const name = (err && err.name) || '';
+  const text = String((err && err.message) || err || '');
+  const has = (needle) => name === needle || text.indexOf(needle) !== -1;
   let msg;
-  if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
-    msg = 'Akses kamera ditolak. Ketuk ikon 🔒/ⓘ di address bar browser > Izin Situs > izinkan Kamera, lalu coba scan lagi.';
-  } else if(name === 'NotFoundError' || name === 'DevicesNotFoundError'){
+  if(has('NotAllowedError') || has('PermissionDeniedError') || has('Permission denied')){
+    msg = 'Akses kamera ditolak. Ketuk ikon 🔒/ⓘ di address bar browser > Izin Situs > izinkan Kamera, lalu muat ulang halaman & coba scan lagi.';
+  } else if(has('NotFoundError') || has('DevicesNotFoundError')){
     msg = 'Tidak menemukan kamera di perangkat ini.';
-  } else if(name === 'NotReadableError' || name === 'TrackStartError'){
-    msg = 'Kamera sedang dipakai aplikasi lain (mis. video call). Tutup aplikasi itu dulu lalu coba lagi.';
-  } else if(name === 'OverconstrainedError' || name === 'ConstraintNotSatisfiedError'){
+  } else if(has('NotReadableError') || has('TrackStartError')){
+    msg = 'Kamera sedang dipakai aplikasi lain (mis. video call/aplikasi kamera). Tutup aplikasi itu dulu lalu coba lagi.';
+  } else if(has('OverconstrainedError') || has('ConstraintNotSatisfiedError')){
     msg = 'Kamera perangkat ini tidak cocok dengan pengaturan yang diminta. Coba tutup & buka lagi fitur scan ini.';
+  } else if(has('AbortError')){
+    msg = 'Kamera gagal dinyalakan (kemungkinan bentrok dgn proses lain di HP). Tutup aplikasi kamera/video call lain, tunggu sebentar, lalu coba lagi.';
+  } else if(has('SecurityError')){
+    msg = 'Akses kamera diblokir oleh pengaturan keamanan perangkat/browser. Pastikan halaman dibuka lewat HTTPS di browser asli, lalu coba lagi.';
   } else {
-    msg = 'Tidak bisa mengakses kamera. Kalau halaman ini dibuka lewat WhatsApp/Instagram/aplikasi lain, coba buka link-nya langsung di Chrome/Safari (ketuk titik tiga ⋮ > Buka di browser).';
+    msg = 'Tidak bisa mengakses kamera. Kalau halaman ini dibuka lewat WhatsApp/Instagram/aplikasi lain, coba buka link-nya langsung di Chrome/Safari (ketuk titik tiga ⋮ > Buka di browser). Kalau sudah dibuka lewat browser asli tapi masih gagal, coba: (1) ketuk ikon 🔒 di address bar > pastikan izin Kamera "Izinkan", (2) tutup aplikasi lain yang mungkin sedang memakai kamera, (3) muat ulang halaman lalu coba lagi. Selagi itu, barcode tetap bisa diisi manual atau pakai alat scanner USB/Bluetooth fisik.';
   }
   showToast(msg, true);
 }
