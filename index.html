@@ -898,6 +898,7 @@
         <option value="rawbt">Kirim ke Aplikasi RawBT (Android, utk Bluetooth Classic/SPP)</option>
       </select>
       <p style="font-size:11px; color:var(--ink-soft); margin:6px 0 0;">💡 Tips: kalau printer tidak mendukung Bluetooth Low Energy (BLE) -- umum di printer 58mm Bluetooth Classic/SPP -- pakai <b>Kirim ke Aplikasi RawBT</b> (Android) atau <b>Dialog Print Browser</b>. Kalau portnya "dikunci" driver bawaan sistem saat dicolok USB, pakai <b>Dialog Print Browser</b> juga -- asal printer sudah terpasang/terdaftar sebagai printer di HP/komputer, metode ini paling kompatibel untuk hampir semua jenis printer thermal.</p>
+      <p id="pos-print-browser-hint" style="display:none; font-size:11px; color:#8a5a00; background:#FFF6E5; border:1px solid #F3D9A0; border-radius:8px; padding:8px 10px; margin:8px 0 0;">⚠️ Kalau mencetak ke <b>printer fisik asli</b> (bukan "Simpan sebagai PDF"), ukuran kertas yang benar-benar tercetak ikut daftar bawaan driver printer di komputer/HP -- BUKAN otomatis sama dengan "Ukuran Kertas" yang dipilih di atas. Kalau hasil cetak tidak sesuai (kertas kosong berlebih / terpotong), buka <b>More settings → Paper size</b> di dialog cetak lalu pilih ukuran yang paling mendekati, atau atur "Form"/ukuran default di Windows lewat Control Panel → Devices and Printers → klik kanan printernya → Printing Preferences. Cara paling akurat & otomatis tetap lewat <b>Langsung ke Printer Bluetooth/USB</b> atau <b>RawBT</b> di atas, karena metode itu mengirim struk sebagai teks langsung ke printer tanpa bergantung ukuran kertas driver.</p>
 
       <div id="pos-print-connect-box" style="display:none; margin-top:10px; padding:10px 12px; background:var(--paper); border-radius:10px;">
         <div id="pos-print-connect-row" style="display:flex; align-items:center; justify-content:space-between; gap:8px;">
@@ -2835,7 +2836,9 @@ function onPrintMethodChange(){
   const connectRow = document.getElementById('pos-print-connect-row');
   const hint = document.getElementById('pos-print-hint');
   const fallbackBtn = document.getElementById('pos-print-fallback-btn');
+  const browserHint = document.getElementById('pos-print-browser-hint');
   if(fallbackBtn) fallbackBtn.style.display = 'none'; // reset tiap ganti metode
+  if(browserHint) browserHint.style.display = (method === 'browser') ? 'block' : 'none';
   if(method === 'browser'){
     box.style.display = 'none';
     return;
