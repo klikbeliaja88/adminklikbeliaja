@@ -943,7 +943,9 @@ function showToast(msg, isError){
   t.textContent = msg;
   t.className = 'toast show' + (isError ? ' error' : '');
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>t.classList.remove('show'), 2500);
+  // Pesan error kadang panjang (perlu penjelasan detail) -- kasih waktu
+  // baca lebih lama drpd toast biasa (2.5 detik) supaya sempat terbaca.
+  toastTimer = setTimeout(()=>t.classList.remove('show'), isError ? 7000 : 2500);
 }
 
 function openModal(id){ document.getElementById(id).classList.add('active'); }
@@ -1968,7 +1970,16 @@ document.addEventListener('keydown', (e)=>{
       halamannya sudah dibuka di browser asli & sebabnya lain (izin
       ditolak, kamera dipakai app lain, dll). Makanya finalizeBarcode
       CameraError() di bawah mengecek juga ISI TEKS errornya, tidak
-      cuma .name. */
+      cuma .name.
+   5. Izin kamera itu TERPISAH per aplikasi browser (mengizinkan di
+      Chrome tidak otomatis berlaku di Samsung Internet/Opera/dll,
+      begitu juga sebaliknya) -- pengguna kadang cek/aktifkan izinnya
+      di browser yg BEDA dari yg dipakai membuka link ini, lalu bingung
+      kenapa masih ditolak. Makanya saat NotAllowedError terjadi, di
+      bawah dicek silang lewat Permissions API: kalau browser yg
+      SEDANG dipakai justru bilang izinnya sudah "granted" tapi
+      getUserMedia tetap gagal, pesannya diarahkan ke kemungkinan itu
+      (bukan pesan izin-ditolak generik yang menyesatkan). */
 let barcodeScannerInstance = null;
 let barcodeScanCallback = null;
 
@@ -2054,7 +2065,7 @@ function startBarcodeCamera(cameraConfig, allowFallback){
   });
 }
 
-function finalizeBarcodeCameraError(err){
+async function finalizeBarcodeCameraError(err){
   const statusEl = document.getElementById('barcode-scan-status');
   statusEl.textContent = 'Gagal mengakses kamera.';
   // PENTING: library html5-qrcode kadang membungkus error ASLI jadi
@@ -2067,10 +2078,26 @@ function finalizeBarcodeCameraError(err){
   // isi TEKS errornya, tidak cuma properti .name.
   const name = (err && err.name) || '';
   const text = String((err && err.message) || err || '');
+  const rawDetail = text || name || 'tidak diketahui';
   const has = (needle) => name === needle || text.indexOf(needle) !== -1;
   let msg;
   if(has('NotAllowedError') || has('PermissionDeniedError') || has('Permission denied')){
     msg = 'Akses kamera ditolak. Ketuk ikon 🔒/ⓘ di address bar browser > Izin Situs > izinkan Kamera, lalu muat ulang halaman & coba scan lagi.';
+    // Cek silang lewat Permissions API: kalau browser yg SEDANG dipakai
+    // ini justru bilang izinnya sudah "granted" tapi getUserMedia tetap
+    // ditolak, biang keroknya BUKAN pengaturan izin di browser ini --
+    // kemungkinan besar link dibuka lewat APLIKASI/BROWSER LAIN dari yg
+    // tadi dicek izinnya (izin kamera terpisah per aplikasi browser, tidak
+    // saling berbagi antar Chrome/Samsung Internet/dll), atau izin Kamera
+    // utk aplikasi browser itu sendiri belum diizinkan di level Android.
+    if(navigator.permissions && navigator.permissions.query){
+      try{
+        const status = await navigator.permissions.query({ name: 'camera' });
+        if(status.state === 'granted'){
+          msg = 'Browser yang sedang Anda pakai ini melaporkan izin kamera untuk situs ini sudah "Diizinkan", tapi kamera tetap gagal diakses. Ini biasanya berarti: (1) tadi izin kamera dicek/diaktifkan di APLIKASI BROWSER LAIN (misalnya Chrome), padahal link ini dibuka lewat browser LAIN (misalnya Samsung Internet/Opera/dll) -- izin kamera TIDAK dibagi antar aplikasi browser, jadi harus dicek ulang persis di aplikasi yang sedang dipakai sekarang; ATAU (2) aplikasi browser itu sendiri belum diberi izin Kamera di level Android (Setelan HP > Aplikasi > pilih aplikasi browsernya > Izin > Kamera > Izinkan). Setelah itu, tutup total aplikasi browsernya (bukan cuma minimize) lalu buka lagi linknya.';
+        }
+      }catch(e){ /* Permissions API utk 'camera' tidak didukung semua browser -- lewati, pesan default di atas tetap dipakai */ }
+    }
   } else if(has('NotFoundError') || has('DevicesNotFoundError')){
     msg = 'Tidak menemukan kamera di perangkat ini.';
   } else if(has('NotReadableError') || has('TrackStartError')){
@@ -2082,8 +2109,17 @@ function finalizeBarcodeCameraError(err){
   } else if(has('SecurityError')){
     msg = 'Akses kamera diblokir oleh pengaturan keamanan perangkat/browser. Pastikan halaman dibuka lewat HTTPS di browser asli, lalu coba lagi.';
   } else {
-    msg = 'Tidak bisa mengakses kamera. Kalau halaman ini dibuka lewat WhatsApp/Instagram/aplikasi lain, coba buka link-nya langsung di Chrome/Safari (ketuk titik tiga ⋮ > Buka di browser). Kalau sudah dibuka lewat browser asli tapi masih gagal, coba: (1) ketuk ikon 🔒 di address bar > pastikan izin Kamera "Izinkan", (2) tutup aplikasi lain yang mungkin sedang memakai kamera, (3) muat ulang halaman lalu coba lagi. Selagi itu, barcode tetap bisa diisi manual atau pakai alat scanner USB/Bluetooth fisik.';
+    // Sebab TIDAK cocok dgn pola error kamera yang umum (bukan soal izin,
+    // bukan kamera dipakai app lain, dll) -- daripada nebak lagi & bikin
+    // pengguna bolak-balik coba-coba, TAMPILKAN LANGSUNG detail teknis
+    // asli dari error-nya di sini supaya penyebab pastinya kelihatan
+    // (mis. ada kemungkinan sebenarnya soal rendering/kompatibilitas
+    // perangkat, bukan soal kamera/izin sama sekali).
+    msg = `Tidak bisa mengakses kamera (sebab tidak dikenali otomatis). Kalau halaman ini dibuka lewat WhatsApp/Instagram/aplikasi lain, coba buka link-nya langsung di Chrome/Safari (ketuk titik tiga ⋮ > Buka di browser). Selagi itu, barcode tetap bisa diisi manual atau pakai alat scanner USB/Bluetooth fisik.\n\nDetail teknis (mohon sertakan ini kalau melapor): ${rawDetail}`;
   }
+  // Simpan juga pesan LENGKAP di status dalam modal (bukan cuma toast yg
+  // otomatis hilang) supaya sempat terbaca semua, terutama pesan panjang.
+  statusEl.textContent = msg;
   showToast(msg, true);
 }
 
