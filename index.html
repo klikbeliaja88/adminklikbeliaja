@@ -1948,10 +1948,15 @@ document.addEventListener('keydown', (e)=>{
    CATATAN PENTING soal kamera HP -- ini beberapa penyebab paling umum
    kalau kamera "tidak jalan" khusus di HP (padahal di komputer normal),
    sudah ditangani di bawah:
-   1. Sebagian HP dgn banyak kamera belakang (wide/ultra-wide) menolak
-      constraint {facingMode:'environment'} yang terlalu ketat -->
-      di-fallback otomatis ke daftar kamera fisik (Html5Qrcode.getCameras)
-      dan coba kamera terakhir dalam daftar (biasanya kamera utama).
+   1. [SUDAH DIPERBAIKI -- lihat catatan di startBarcodeCamera()] Dulu
+      dipakai constraint {facingMode:{ideal:'environment'}} yang justru
+      TIDAK dikenali parser internal library ini (cuma mengenali bentuk
+      string biasa atau {exact:...}) sehingga SELALU gagal sebelum
+      sempat menyentuh kamera sama sekali -- ini penyebab UTAMA laporan
+      "kamera tidak bisa diakses" di hampir semua kasus sebelumnya.
+      Sekarang dgn facingMode:'environment' tetap ada fallback otomatis
+      ke daftar kamera fisik (Html5Qrcode.getCameras) & coba kamera
+      terakhir dalam daftar (biasanya kamera utama) utk jaga-jaga.
    2. Kalau link admin dibuka lewat WEBVIEW aplikasi lain (WhatsApp,
       Instagram, Facebook, dll) -- BUKAN browser Chrome/Safari langsung
       -- banyak webview semacam itu MEMBLOKIR akses kamera sama sekali.
@@ -2020,11 +2025,25 @@ function openBarcodeScanner(onDetected){
   // butuh 1 frame render dulu sebelum ukuran kontainer akurat).
   setTimeout(()=>{
     // Utamakan kamera belakang (environment) -- lebih cocok untuk scan
-    // barcode fisik dibanding kamera depan. Pakai {ideal:...} (bukan
-    // constraint ketat/exact) supaya HP dgn banyak kamera belakang
-    // tidak langsung gagal kalau salah satu constraint tidak persis
-    // cocok -- browser akan pilih kamera environment terdekat yg ada.
-    startBarcodeCamera({ facingMode: { ideal: 'environment' } }, true);
+    // barcode fisik dibanding kamera depan.
+    //
+    // PENTING (bug yang baru ketahuan): library html5-qrcode PUNYA
+    // PARSER CONSTRAINT SENDIRI (Html5Qrcode.toMediaTrackConstraints)
+    // yang HANYA mengenali facingMode dalam 2 bentuk: string biasa
+    // ('environment') ATAU objek dengan key 'exact' ({exact:'environment'}).
+    // Bentuk {ideal:'environment'} -- walau itu sintaks STANDAR WebRTC
+    // yang sah di getUserMedia asli -- TIDAK dikenali parser internal
+    // library ini & langsung throw ("'facingMode' should be string or
+    // object with exact as key.") SEBELUM sempat menyentuh kamera sama
+    // sekali. Ini SEBAB ASLI kenapa "Scan Barcode" selalu gagal dgn
+    // pesan error kamera generik di SEMUA browser (Chrome, Edge, dll)
+    // walau kamera & izinnya sendiri sebenarnya baik-baik saja -- bukan
+    // soal WebView/izin/driver seperti yang sempat dicurigai sebelumnya.
+    // Fix: pakai facingMode berupa STRING biasa (bukan exact) -- ini
+    // tetap berlaku sbg "preferensi" (soft constraint) ke browser, sama
+    // seperti niat {ideal:...} semula, cuma dlm bentuk yg dikenali
+    // library ini.
+    startBarcodeCamera({ facingMode: 'environment' }, true);
   }, 60);
 }
 
