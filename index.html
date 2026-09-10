@@ -2350,6 +2350,25 @@ async function rejectPayment(orderId){
   else showToast(res.error || 'Gagal menolak bukti', true);
 }
 
+// Batalkan pesanan ONLINE yang terindikasi fiktif/curang -- bedanya dgn
+// rejectPayment() di atas: rejectPayment cuma menolak BUKTINYA (pelanggan
+// masih dikasih kesempatan upload ulang), sedangkan ini MEMBATALKAN
+// PESANANNYA SEKALIAN (dipakai kalau admin sudah yakin itu memang
+// percobaan curang, bukan cuma salah foto -- mis. sudah dicek mutasi
+// rekening & nominalnya tidak pernah masuk). Stok yang sempat terpotong
+// otomatis dikembalikan, & alasannya bisa dilihat pelanggan sendiri
+// lewat "Cek Status Pesanan" pakai nomor pesanan.
+async function cancelOrderAsFraud(orderId){
+  const reason = prompt('Alasan pembatalan pesanan ini (akan terlihat oleh pelanggan saat cek nomor pesanan):', 'Bukti pembayaran tidak sesuai mutasi rekening / terindikasi tidak sah');
+  if(reason === null) return; // admin membatalkan aksi
+  if(!reason.trim()){ showToast('Alasan pembatalan wajib diisi', true); return; }
+  const ok = confirm(`Batalkan pesanan ${orderId}?\n\nStok yang sudah terpotong akan dikembalikan otomatis & pelanggan akan melihat alasan ini lewat "Cek Status Pesanan". Tindakan ini tidak bisa diurungkan.`);
+  if(!ok) return;
+  const res = await callApi('adminCancelOrder', { order_id: orderId, reason: reason.trim() });
+  if(res.success){ showToast('Pesanan dibatalkan, stok sudah dikembalikan'); closeModal('modal-pesanan'); loadAdminData(); }
+  else showToast(res.error || 'Gagal membatalkan pesanan', true);
+}
+
 function openOrderDetail(orderId){
   currentOrderId = orderId;
   const order = DATA.orders.find(o=>o.Order_ID===orderId);
@@ -2392,6 +2411,12 @@ function openOrderDetail(orderId){
         </select>
       </div>
     </div>
+    ${order.Order_Status!=='SELESAI' ? `
+    <div style="margin-top:14px; padding-top:14px; border-top:1.5px dashed var(--line);">
+      <button type="button" class="btn btn-ghost btn-sm" style="color:var(--stamp); border-color:var(--stamp);" onclick="cancelOrderAsFraud('${order.Order_ID}')">🚫 Batalkan Pesanan (Fiktif/Curang)</button>
+      <p style="font-size:11px; color:var(--ink-soft); margin:6px 0 0;">Pakai ini kalau bukti pembayaran terbukti buram/editan/nominal tidak cocok saat dicek mutasi rekening. Stok otomatis dikembalikan & pelanggan bisa lihat alasannya lewat "Cek Status Pesanan".</p>
+    </div>
+    ` : ''}
     `}
   `;
   const saveBtn = document.getElementById('pesanan-save-btn');
