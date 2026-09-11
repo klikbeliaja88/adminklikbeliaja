@@ -19,7 +19,6 @@
     --shadow:0 6px 18px rgba(14,60,35,0.08); --shadow-sm:0 2px 8px rgba(14,60,35,0.06);
   }
   *{box-sizing:border-box;}
-  html{overflow-x:hidden;}
   body{margin:0; background:var(--paper); color:var(--ink); font-family:'Plus Jakarta Sans',sans-serif; overflow-x:hidden;}
   h1,h2,h3{font-family:'Plus Jakarta Sans',sans-serif; font-weight:800; letter-spacing:-0.01em; margin:0;}
   button{font-family:inherit; cursor:pointer;}
@@ -35,7 +34,7 @@
   .login-logo{text-align:center; margin-bottom:6px; font-size:36px;}
   .login-card h1{text-align:center; font-size:22px; margin-bottom:4px;}
   .login-card .sub{text-align:center; font-size:12.5px; color:var(--ink-soft); margin-bottom:26px;}
-  .field{margin-bottom:16px;}
+  .field{margin-bottom:16px; min-width:0;}
   .field label{display:block; font-size:12px; font-weight:700; text-transform:uppercase; letter-spacing:.03em; color:var(--ink-soft); margin-bottom:6px;}
   .field input, .field select, .field textarea{
     width:100%; padding:11px 13px; border:1.5px solid var(--line); border-radius:10px; font-size:14px; background:#fff;
@@ -942,6 +941,23 @@ let DATA = { categories:[], products:[], orders:[], orderDetails:[], customers:[
 let currentOrderId = null;
 
 function rupiah(n){ return 'Rp' + (Number(n)||0).toLocaleString('id-ID'); }
+// PERBAIKAN KEAMANAN (Stored XSS): data dari PELANGGAN (nama, alamat,
+// no WA, kecamatan, kota, catatan) sebelumnya ditaruh langsung ke innerHTML
+// tanpa di-escape. Karena checkout bisa diisi siapa saja tanpa login, orang
+// jahat bisa isi nama/alamat dengan HTML/script (mis. "<img src=x
+// onerror=...>"), dan begitu admin buka tab Pesanan kode itu ikut
+// dieksekusi di browser admin -- bisa dipakai mencuri sesi admin/token atau
+// melakukan aksi atas nama admin. escapeHtml() WAJIB dipakai membungkus
+// setiap data pelanggan yang ditaruh ke innerHTML di seluruh file ini.
+function escapeHtml(str){
+  if(str===null || str===undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
 
 let toastTimer;
 function showToast(msg, isError){
@@ -1175,9 +1191,9 @@ function renderNotifPanelList(){
     return;
   }
   listEl.innerHTML = unreadOrders.map(o => `
-    <button type="button" class="notif-item" onclick="openNotifOrder('${o.Order_ID}')">
-      <div class="cell-strong" style="font-size:13px;">🛒 Pesanan Baru: ${o.Order_ID}</div>
-      <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${o.Customer_Name || 'Pelanggan'} — ${rupiah(o.Grand_Total||0)}</div>
+    <button type="button" class="notif-item" onclick="openNotifOrder('${escapeHtml(o.Order_ID)}')">
+      <div class="cell-strong" style="font-size:13px;">🛒 Pesanan Baru: ${escapeHtml(o.Order_ID)}</div>
+      <div style="font-size:12px; color:var(--ink-soft); margin-top:2px;">${escapeHtml(o.Customer_Name || 'Pelanggan')} — ${rupiah(o.Grand_Total||0)}</div>
       <div style="font-size:10.5px; color:var(--ink-soft); margin-top:2px;">${formatNotifTime(o.Order_Date)}</div>
     </button>
   `).join('');
@@ -1302,8 +1318,8 @@ function renderDashboard(){
   const recent = DATA.orders.slice(0,8);
   document.getElementById('dashboard-recent').innerHTML = recent.length ? recent.map(o=>`
     <tr>
-      <td class="cell-strong">${o.Order_ID}</td>
-      <td>${o.Customer_Name}</td>
+      <td class="cell-strong">${escapeHtml(o.Order_ID)}</td>
+      <td>${escapeHtml(o.Customer_Name)}</td>
       <td>${rupiah(o.Grand_Total)}</td>
       <td>${statusTag(o.Order_Status)}</td>
       <td class="cell-muted">${formatDate(o.Order_Date)}</td>
@@ -2278,15 +2294,15 @@ function renderPesananTable(){
   const paged = paginateTable('pesanan', list, term+'|'+statusFilter);
   tbody.innerHTML = paged.pageItems.map(o=>`
     <tr>
-      <td class="cell-strong">${o.Order_ID}</td>
-      <td>${o.Customer_Name}<br><span class="cell-muted">${o.WhatsApp}</span></td>
+      <td class="cell-strong">${escapeHtml(o.Order_ID)}</td>
+      <td>${escapeHtml(o.Customer_Name)}<br><span class="cell-muted">${escapeHtml(o.WhatsApp)}</span></td>
       <td>${deliveryInfoCell(o)}</td>
       <td>${rupiah(o.Grand_Total)}</td>
-      <td class="cell-muted">${o.Payment_Method}</td>
+      <td class="cell-muted">${escapeHtml(o.Payment_Method)}</td>
       <td>${statusTag(o.Payment_Status)}</td>
       <td>${statusTag(o.Payment_Proof_Status)}</td>
       <td>${statusTag(o.Order_Status)}</td>
-      <td><button class="icon-action" onclick="openOrderDetail('${o.Order_ID}')">Lihat / Update</button></td>
+      <td><button class="icon-action" onclick="openOrderDetail('${escapeHtml(o.Order_ID)}')">Lihat / Update</button></td>
     </tr>
   `).join('');
   renderTablePager('pesanan-pagination', 'pesanan', paged);
@@ -2295,7 +2311,7 @@ function renderPesananTable(){
 function deliveryInfoCell(o){
   if(o.Delivery_Method === 'pickup') return `<span class="cell-muted">🏪 Ambil di Toko</span>`;
   if(o.Delivery_Date && o.Delivery_Slot){
-    return `<span class="cell-muted">🚚 ${String(o.Delivery_Date).slice(0,10)}<br>Sesi ${o.Delivery_Slot}</span>`;
+    return `<span class="cell-muted">🚚 ${String(o.Delivery_Date).slice(0,10)}<br>Sesi ${escapeHtml(o.Delivery_Slot)}</span>`;
   }
   return `<span class="cell-muted">—</span>`;
 }
@@ -2313,7 +2329,7 @@ function orderProofBlock(order){
   }[status] || status;
 
   const thumb = order.Payment_Proof_URL
-    ? `<a href="${order.Payment_Proof_URL}" target="_blank" rel="noopener"><img src="${order.Payment_Proof_URL}" style="width:90px;height:90px;object-fit:cover;border:1.5px solid var(--ink);border-radius:6px;" alt="Bukti pembayaran" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('span'),{textContent:'📎 Lihat bukti',style:'font-size:11px;color:var(--ink-soft);'}));"></a>`
+    ? `<a href="${escapeHtml(order.Payment_Proof_URL)}" target="_blank" rel="noopener"><img src="${escapeHtml(order.Payment_Proof_URL)}" style="width:90px;height:90px;object-fit:cover;border:1.5px solid var(--ink);border-radius:6px;" alt="Bukti pembayaran" onerror="this.onerror=null;this.replaceWith(Object.assign(document.createElement('span'),{textContent:'📎 Lihat bukti',style:'font-size:11px;color:var(--ink-soft);'}));"></a>`
     : `<div style="width:90px;height:90px;border:1.5px dashed var(--ink);border-radius:6px;display:flex;align-items:center;justify-content:center;font-size:10.5px;color:var(--ink-soft);text-align:center;padding:4px;">Belum ada foto</div>`;
 
   const canAct = order.Payment_Proof_URL && status !== 'DIVERIFIKASI';
@@ -2327,11 +2343,11 @@ function orderProofBlock(order){
         <div style="flex:1;">
           <p style="font-size:13px; font-weight:600; margin:0 0 8px;">${statusLabel}</p>
           ${paidInfo}
-          ${order.Payment_Proof_Note ? `<p style="font-size:11.5px; color:var(--stamp); margin:0 0 8px;">Catatan: ${order.Payment_Proof_Note}</p>` : ''}
+          ${order.Payment_Proof_Note ? `<p style="font-size:11.5px; color:var(--stamp); margin:0 0 8px;">Catatan: ${escapeHtml(order.Payment_Proof_Note)}</p>` : ''}
           ${canAct ? `
             <div style="display:flex; gap:8px; flex-wrap:wrap;">
-              <button type="button" class="btn btn-primary btn-sm" onclick="verifyPayment('${order.Order_ID}')">✓ Verifikasi</button>
-              <button type="button" class="btn btn-ghost btn-sm" style="color:var(--stamp); border-color:var(--stamp);" onclick="rejectPayment('${order.Order_ID}')">✕ Tolak</button>
+              <button type="button" class="btn btn-primary btn-sm" onclick="verifyPayment('${escapeHtml(order.Order_ID)}')">✓ Verifikasi</button>
+              <button type="button" class="btn btn-ghost btn-sm" style="color:var(--stamp); border-color:var(--stamp);" onclick="rejectPayment('${escapeHtml(order.Order_ID)}')">✕ Tolak</button>
             </div>
           ` : ''}
         </div>
@@ -2381,13 +2397,13 @@ function openOrderDetail(orderId){
   const items = DATA.orderDetails.filter(d=>d.Order_ID===orderId);
 
   document.getElementById('pesanan-modal-body').innerHTML = `
-    <p class="cell-strong" style="font-size:16px;">${order.Order_ID}</p>
-    <p class="cell-muted" style="margin-top:2px;">${order.Customer_Name} · ${order.WhatsApp}</p>
-    <p class="cell-muted">${order.Address}, ${order.District}, ${order.City}</p>
-    <p style="font-size:12.5px; font-weight:700; margin:6px 0 0;">${order.Delivery_Method==='pickup' ? '🏪 Ambil Sendiri di Toko' : (order.Delivery_Date && order.Delivery_Slot ? `🚚 Batch Pengantaran: ${String(order.Delivery_Date).slice(0,10)} · Sesi ${order.Delivery_Slot}` : '🚚 Delivery')}</p>
-    ${order.Notes ? `<p class="cell-muted">Catatan: ${order.Notes}</p>` : ''}
+    <p class="cell-strong" style="font-size:16px;">${escapeHtml(order.Order_ID)}</p>
+    <p class="cell-muted" style="margin-top:2px;">${escapeHtml(order.Customer_Name)} · ${escapeHtml(order.WhatsApp)}</p>
+    <p class="cell-muted">${escapeHtml(order.Address)}, ${escapeHtml(order.District)}, ${escapeHtml(order.City)}</p>
+    <p style="font-size:12.5px; font-weight:700; margin:6px 0 0;">${order.Delivery_Method==='pickup' ? '🏪 Ambil Sendiri di Toko' : (order.Delivery_Date && order.Delivery_Slot ? `🚚 Batch Pengantaran: ${String(order.Delivery_Date).slice(0,10)} · Sesi ${escapeHtml(order.Delivery_Slot)}` : '🚚 Delivery')}</p>
+    ${order.Notes ? `<p class="cell-muted">Catatan: ${escapeHtml(order.Notes)}</p>` : ''}
     <div class="order-items">
-      ${items.map(it=>`<div class="order-item-line"><span>${it.Product_Name} × ${it.Qty}</span><span>${rupiah(it.Total)}</span></div>`).join('')}
+      ${items.map(it=>`<div class="order-item-line"><span>${escapeHtml(it.Product_Name)} × ${it.Qty}</span><span>${rupiah(it.Total)}</span></div>`).join('')}
       <div class="order-item-line cell-strong" style="border-top:1.5px dashed var(--line); margin-top:6px; padding-top:8px;">
         <span>Total (+ ongkir ${rupiah(order.Shipping)})</span><span>${rupiah(order.Grand_Total)}</span>
       </div>
@@ -2419,7 +2435,7 @@ function openOrderDetail(orderId){
     </div>
     ${order.Order_Status!=='SELESAI' ? `
     <div style="margin-top:14px; padding-top:14px; border-top:1.5px dashed var(--line);">
-      <button type="button" class="btn btn-ghost btn-sm" style="color:var(--stamp); border-color:var(--stamp);" onclick="cancelOrderAsFraud('${order.Order_ID}')">🚫 Batalkan Pesanan (Fiktif/Curang)</button>
+      <button type="button" class="btn btn-ghost btn-sm" style="color:var(--stamp); border-color:var(--stamp);" onclick="cancelOrderAsFraud('${escapeHtml(order.Order_ID)}')">🚫 Batalkan Pesanan (Fiktif/Curang)</button>
       <p style="font-size:11px; color:var(--ink-soft); margin:6px 0 0;">Pakai ini kalau bukti pembayaran terbukti buram/editan/nominal tidak cocok saat dicek mutasi rekening. Stok otomatis dikembalikan & pelanggan bisa lihat alasannya lewat "Cek Status Pesanan".</p>
     </div>
     ` : ''}
@@ -3502,9 +3518,9 @@ function renderPelangganTable(){
   const paged = paginateTable('pelanggan', DATA.customers, DATA.customers.length);
   tbody.innerHTML = paged.pageItems.map(c=>`
     <tr>
-      <td class="cell-strong">${c.Name}</td>
-      <td>${c.WhatsApp}</td>
-      <td class="cell-muted">${c.City||'-'}</td>
+      <td class="cell-strong">${escapeHtml(c.Name)}</td>
+      <td>${escapeHtml(c.WhatsApp)}</td>
+      <td class="cell-muted">${escapeHtml(c.City||'-')}</td>
       <td>${c.Total_Order}</td>
       <td>${rupiah(c.Total_Spending)}</td>
       <td class="cell-muted">${formatDate(c.Last_Order)}</td>
@@ -3709,12 +3725,12 @@ function renderPengantaranTab(){
             ${list.map(o=>`
               <div style="display:flex; justify-content:space-between; align-items:center; padding:10px 12px; background:var(--paper); border-radius:10px; gap:10px; flex-wrap:wrap;">
                 <div>
-                  <div class="cell-strong" style="font-size:13px;">${o.Order_ID} — ${o.Customer_Name}</div>
-                  <div class="cell-muted" style="font-size:12px;">${o.Address||''}${o.District ? ', '+o.District : ''}${o.City ? ', '+o.City : ''}</div>
+                  <div class="cell-strong" style="font-size:13px;">${escapeHtml(o.Order_ID)} — ${escapeHtml(o.Customer_Name)}</div>
+                  <div class="cell-muted" style="font-size:12px;">${escapeHtml(o.Address||'')}${o.District ? ', '+escapeHtml(o.District) : ''}${o.City ? ', '+escapeHtml(o.City) : ''}</div>
                 </div>
                 <div style="display:flex; align-items:center; gap:8px;">
                   <span class="cell-muted" style="font-size:12.5px;">${rupiah(o.Grand_Total)}</span>
-                  <button class="icon-action" onclick="openOrderDetail('${o.Order_ID}')">Lihat</button>
+                  <button class="icon-action" onclick="openOrderDetail('${escapeHtml(o.Order_ID)}')">Lihat</button>
                 </div>
               </div>
             `).join('')}
